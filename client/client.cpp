@@ -34,7 +34,7 @@ void* t_recv(void* fd){
 int main(int argc, char* argv[]){
 	int fd = socket(AF_INET, SOCK_STREAM, 0);
 
-	char* s_ip = "192.168.196.159";
+	char* s_ip = "192.168.196.160";
 	short port = 8080;
 
 	struct sockaddr_in s_sockaddr;
