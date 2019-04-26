@@ -1,4 +1,4 @@
-//#include <iostream>
+#include <iostream>
 //#include <string>
 
 #include <stdio.h>
@@ -9,14 +9,15 @@
 #include <arpa/inet.h>
 #include <pthread.h>
 
-//using namespace std;
+using namespace std;
 
 void* t_send(void* fd){
 	char message[64] = {0};
 	while(1){
 		memset(message, 0, sizeof(message));
 		fgets(message, sizeof(message), stdin);
-		send(*(int*)fd, message, sizeof(message), 0);
+		message[strlen(message) - 1] = '\0';
+		send(*(int*)fd, message, strlen(message), 0);
 	}
 }
 
@@ -28,13 +29,14 @@ void* t_recv(void* fd){
 			break;
 		}
 		printf("%s", message);
+		fflush(stdout);
 	}
 }
 
 int main(int argc, char* argv[]){
 	int fd = socket(AF_INET, SOCK_STREAM, 0);
 
-	char* s_ip = "192.168.196.160";
+	char* s_ip = "192.168.196.162";
 	short port = 8080;
 
 	struct sockaddr_in s_sockaddr;

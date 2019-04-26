@@ -1,5 +1,5 @@
-//#include <iostream>
-//#include <string>
+#include <iostream>
+#include <string>
 
 #include <stdio.h>
 #include <unistd.h>
@@ -13,7 +13,7 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 
-//using namespace std;
+using namespace std;
 
 void* thread_send(void* _client_sockfd){
 	char buffer[32] = {0};
@@ -21,12 +21,13 @@ void* thread_send(void* _client_sockfd){
 	while(1){
 		memset(buffer, 0, sizeof(buffer));
 		fgets(buffer, sizeof(buffer), stdin);
-		send(client_sockfd, buffer, sizeof(buffer), 0);
+		buffer[strlen(buffer) - 1] = '\0';
+		send(client_sockfd, buffer, strlen(buffer), 0);
 	}
 }
 
 void* thread_recv(void* _client_sockfd){
-	char buffer[32] = {0};
+	char buffer[8192] = {0};
 	int client_sockfd = *(int*)_client_sockfd;
 	while(1){
 		memset(buffer, 0, sizeof(buffer));
@@ -34,6 +35,7 @@ void* thread_recv(void* _client_sockfd){
 			break;
 		}
 		printf("%s", buffer);
+		fflush(stdout);
 	}
 }
 
@@ -122,10 +124,11 @@ int main(){
 	int client_sockfd = accept(server_sock, (struct sockaddr*)&client_sockfdaddr, &client_sockaddr_len);
 
 	pthread_t tid1, tid2;
-	pthread_create(&tid1, NULL, thread_send, &client_sockfd);
-	pthread_create(&tid2, NULL, thread_recv, &client_sockfd);
+	pthread_create(&tid1, NULL, thread_recv, &client_sockfd);
+	pthread_create(&tid2, NULL, thread_send, &client_sockfd);
 
-	while(1){}
+	//pthread_join(tid1, NULL);
+	while(1);
 
 	//char buf[128] = {0};
 	//while(1){
