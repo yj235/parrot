@@ -110,6 +110,9 @@ int main(){
 	struct sockaddr_in server_sockaddr;
 
 	int server_sock = socket(AF_INET, SOCK_STREAM, 0);
+	//设置调用closesocket()后，仍可继续重用该socket.(调用closesocket()一般不会立即关闭socket,而经历TIME_WAIT的过程.)
+	bool bReuseaddr = true;
+	setsockopt(server_sock,SOL_SOCKET,SO_REUSEADDR,(const char*)&bReuseaddr,sizeof(bReuseaddr));
 
 	memset(&server_sockaddr, 0, sizeof(server_sockaddr));
 	server_sockaddr.sin_family = AF_INET;

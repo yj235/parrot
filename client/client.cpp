@@ -28,7 +28,7 @@ void* t_recv(void* fd){
 		if(!recv(*(int*)fd, message, sizeof(message), 0)){
 			break;
 		}
-		printf("%s", message);
+		printf("%s\n", message);
 		fflush(stdout);
 	}
 }
