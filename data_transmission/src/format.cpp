@@ -1,14 +1,5 @@
 #include "../include/format.h"
 
-//#include <stdio.h>
-//#include <string.h>
-//#include <unistd.h>
-//
-//#include <iostream>
-//#include <string>
-//#include <fstream>
-//#include <iterator>
-
 using namespace std;
 
 void format(string &s, KVP *k){
@@ -47,7 +38,7 @@ void init(void){
 	next(i2);
 }
 
-void p_read(KVP *&p){
+void analysis2(KVP *&p){
 	if(*i1 == '{' && *i2 == '}'){
 		string key(i1 + 1, i1 + string(i1, i2).find(' '));
 		string value(i1 + string(i1, i2).find(' ') + 1, i2);
@@ -62,7 +53,7 @@ void p_read(KVP *&p){
 		cout << p->key << endl;
 		next(i1);
 		next(i2);
-		p_read(p->sub);
+		analysis2(p->sub);
 	}
 	if(*i1 == '}' && *i2 == '}'){
 		next(i1);
@@ -72,14 +63,19 @@ void p_read(KVP *&p){
 	if(*i1 = '}' && *i2 == '{'){
 		next(i1);
 		next(i2);
-		p_read(p->next);
+		analysis2(p->next);
 		return;
 	}
 }
 
+void analysis(KVP *&p){
+	init();
+	analysis2(p);
+}
+
 //int main(int argc, char* argv[]){
 //
-//	//写测试 cpp
+//	//写测试
 //	KVP k1("k1");
 //	KVP k2("k2","2");
 //	KVP k3("k3","3");
@@ -96,12 +92,11 @@ void p_read(KVP *&p){
 //	fs << s;
 //	fs.close();
 //
-//	//读测试 cpp
+//	//读测试
 //	KVP *p;
 //	ifstream fs("data");
 //	getline(fs, sin);
-//	init();
-//	p_read(p);
+//	analysis(p);
 //	fs.close();
 //
 //	return 0;
