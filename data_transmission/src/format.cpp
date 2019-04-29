@@ -1,5 +1,7 @@
 #include "../include/format.h"
 
+//#include <fstream>
+
 using namespace std;
 
 void format(string &s, KVP *k){
@@ -30,15 +32,15 @@ void next(string::iterator &i){
 	}while(*i != '{' && *i != '}');
 }
 
-string sin;
-string::iterator i1, i2;
+//string sin;
+//string::iterator i1, i2;
 
-void init(void){
+void init(string &sin, string::iterator &i1, string::iterator &i2){
 	i1 = i2 = sin.begin();
 	next(i2);
 }
 
-void analysis2(KVP *&p){
+void analysis_2(string::iterator &i1, string::iterator &i2, KVP *&p){
 	if(*i1 == '{' && *i2 == '}'){
 		string key(i1 + 1, i1 + string(i1, i2).find(' '));
 		string value(i1 + string(i1, i2).find(' ') + 1, i2);
@@ -53,7 +55,7 @@ void analysis2(KVP *&p){
 		cout << p->key << endl;
 		next(i1);
 		next(i2);
-		analysis2(p->sub);
+		analysis_2(i1, i2, p->sub);
 	}
 	if(*i1 == '}' && *i2 == '}'){
 		next(i1);
@@ -63,41 +65,43 @@ void analysis2(KVP *&p){
 	if(*i1 = '}' && *i2 == '{'){
 		next(i1);
 		next(i2);
-		analysis2(p->next);
+		analysis_2(i1, i2, p->next);
 		return;
 	}
 }
 
-void analysis(KVP *&p){
-	init();
-	analysis2(p);
+void analysis(string &sin, string::iterator &i1, string::iterator &i2, KVP *&p){
+	init(sin, i1, i2);
+	analysis_2(i1, i2, p);
 }
 
-//int main(int argc, char* argv[]){
-//
-//	//写测试
-//	KVP k1("k1");
-//	KVP k2("k2","2");
-//	KVP k3("k3","3");
-//
-//	k1.sub = &k2;
-//	k2.next = &k3;
-//
-//	string s;
-//	format(s, &k1);
-//
-//	cout << s<< endl;
-//	fstream fs;
-//	fs.open("data", ios::out);
-//	fs << s;
-//	fs.close();
-//
-//	//读测试
-//	KVP *p;
-//	ifstream fs("data");
-//	getline(fs, sin);
-//	analysis(p);
-//	fs.close();
-//
-//	return 0;
-//}
+int main(int argc, char* argv[]){
+
+	//写测试
+	//KVP k1("k1");
+	//KVP k2("k2","2");
+	//KVP k3("k3","3");
+
+	//k1.sub = &k2;
+	//k2.next = &k3;
+
+	//string s;
+	//format(s, &k1);
+
+	//cout << s<< endl;
+	//fstream fs;
+	//fs.open("data", ios::out);
+	//fs << s;
+	//fs.close();
+
+	//读测试
+	//KVP *p;
+	//ifstream fs("data");
+	//string sin;
+	//string::iterator i1, i2;
+	//getline(fs, sin);
+	//analysis(sin, i1, i2, p);
+	//fs.close();
+
+	return 0;
+}

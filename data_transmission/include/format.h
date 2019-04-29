@@ -17,12 +17,13 @@ class KVP{
 		KVP(std::string _key, std::string _value) : key(_key), value(_value){}
 };
 
-extern std::string sin;
-extern std::string::iterator i1, i2;
+//extern std::string sin;
+//extern std::string::iterator i1, i2;
 
 void format(std::string &s, KVP *k);
-void next(std::string::iterator &i);
-void init(void);
-void p_read(KVP *&p);
+//void next(std::string::iterator &i);
+//void init(void);
+//void p_read(KVP *&p);
+void analysis(std::string &sin, std::string::iterator &i1, std::string::iterator &i2, KVP *&p);
 
 #endif
