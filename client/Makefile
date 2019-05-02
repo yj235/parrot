@@ -1,2 +1,2 @@
 startup:client.cpp
-	g++ client.cpp -lpthread -o startup 
+	g++ -std=c++11 -I ../data_transmission/include client.cpp ../../data_transmission/src/format.cpp -lpthread -o startup 

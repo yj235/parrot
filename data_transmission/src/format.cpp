@@ -1,6 +1,7 @@
+#include "../include/KVP.h"
 #include "../include/format.h"
 
-//#include <fstream>
+#include <iostream>
 
 using namespace std;
 
@@ -31,9 +32,6 @@ void next(string::iterator &i){
 		}
 	}while(*i != '{' && *i != '}');
 }
-
-//string sin;
-//string::iterator i1, i2;
 
 void init(string &sin, string::iterator &i1, string::iterator &i2){
 	i1 = i2 = sin.begin();
@@ -73,35 +71,4 @@ void analysis_2(string::iterator &i1, string::iterator &i2, KVP *&p){
 void analysis(string &sin, string::iterator &i1, string::iterator &i2, KVP *&p){
 	init(sin, i1, i2);
 	analysis_2(i1, i2, p);
-}
-
-int main(int argc, char* argv[]){
-
-	//写测试
-	//KVP k1("k1");
-	//KVP k2("k2","2");
-	//KVP k3("k3","3");
-
-	//k1.sub = &k2;
-	//k2.next = &k3;
-
-	//string s;
-	//format(s, &k1);
-
-	//cout << s<< endl;
-	//fstream fs;
-	//fs.open("data", ios::out);
-	//fs << s;
-	//fs.close();
-
-	//读测试
-	//KVP *p;
-	//ifstream fs("data");
-	//string sin;
-	//string::iterator i1, i2;
-	//getline(fs, sin);
-	//analysis(sin, i1, i2, p);
-	//fs.close();
-
-	return 0;
 }

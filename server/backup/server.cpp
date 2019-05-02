@@ -67,8 +67,10 @@ int main(){
 	pthread_attr_t attr;
 	pthread_attr_init(&attr);
 	pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
+
 	pthread_t server_thread_t;
 	pthread_create(&server_thread_t, &attr, server_thread, NULL);
+
 	while(true){
 		struct sockaddr_in client_sockfdaddr;
 		socklen_t client_sockaddr_len = sizeof(client_sockfdaddr);

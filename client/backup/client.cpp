@@ -20,22 +20,6 @@ void login(void){
 	while(getchar() != '\n'){
 		continue;
 	}
-
-	KVP login_kvp, name_kvp, password_kvp;
-
-	password_kvp.key = "password";
-	password_kvp.value = password;
-
-	name_kvp.key = "name";
-	name_kvp.value = name;
-	name_kvp.next = &password_kvp;
-
-	login_kvp.key = "login";
-	login_kvp.sub = &name_kvp;
-
-	string s;
-	format(s, &login_kvp);
-	cout << s << endl;
 }
 
 void* t_send(void* fd){
@@ -90,8 +74,6 @@ int main(int argc, char* argv[]){
 
 	pthread_join(tid1, NULL);
 	pthread_join(tid2, NULL);
-
-	close(fd);
 
 	//while(true){}
 
