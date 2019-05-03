@@ -1,4 +1,5 @@
 #include "../include/KVP.h"
+#include "../../tools/include/pdebug.h"
 
 #include <iostream>
 
@@ -11,5 +12,26 @@ KVP::~KVP(){
 	if(this->next){
 		delete this->next;
 	}
-	cout << "KVP destructor" << endl;
+	pdebug << this->key << " destructor" << endl;
+}
+
+KVP *KVP::find(string& s){
+	if(this->key == s){
+		pdebug << "find" << endl;
+		return this;
+	} else {
+		if(this->sub){
+			KVP *p = this->sub->find(s);
+			if(p != nullptr){
+				return p;
+			}
+		}
+		if(this->next){
+			KVP *p = this->next->find(s);
+			if(p != nullptr){
+				return p;
+			}
+		}
+	}
+	return nullptr;
 }

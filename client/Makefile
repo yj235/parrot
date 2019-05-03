@@ -1,11 +1,11 @@
 User.h = ../user/include
 user.cpp = ../user/src/user.cpp
 
-KVP.h = ../data_transmission/include/test/
-KVP.cpp = ../data_transmission/src/test/KVP.cpp
+KVP.h = ../data_transmission/include/
+KVP.cpp = ../data_transmission/src/KVP.cpp
 
-format.h = ../data_transmission/include/test/
-format.cpp = ../data_transmission/src/test/format.cpp
+format.h = ../data_transmission/include/
+format.cpp = ../data_transmission/src/format.cpp
 
 pdebug.h = ../tools/include/
 

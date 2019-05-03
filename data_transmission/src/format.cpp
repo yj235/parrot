@@ -1,5 +1,6 @@
-#include "../include/KVP.h"
 #include "../include/format.h"
+#include "../include/KVP.h"
+#include "../../tools/include/pdebug.h"
 
 #include <iostream>
 
@@ -43,14 +44,14 @@ void analysis_2(string::iterator &i1, string::iterator &i2, KVP *&p){
 		string key(i1 + 1, i1 + string(i1, i2).find(' '));
 		string value(i1 + string(i1, i2).find(' ') + 1, i2);
 		p = new KVP(key, value);
-		cout << p->key << " " << p->value << endl;
+		pdebug << p->key << " " << p->value << endl;
 		next(i1);
 		next(i2);
 
 	}
 	if(*i1 == '{' && *i2 == '{'){
 		p = new KVP(string(i1 + 1, i2));
-		cout << p->key << endl;
+		pdebug << p->key << endl;
 		next(i1);
 		next(i2);
 		analysis_2(i1, i2, p->sub);
@@ -68,7 +69,8 @@ void analysis_2(string::iterator &i1, string::iterator &i2, KVP *&p){
 	}
 }
 
-void analysis(string &sin, string::iterator &i1, string::iterator &i2, KVP *&p){
-	init(sin, i1, i2);
+void analysis(string &s, KVP *&p){
+	string::iterator i1, i2;
+	init(s, i1, i2);
 	analysis_2(i1, i2, p);
 }
