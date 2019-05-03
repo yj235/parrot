@@ -1,5 +1,15 @@
+#include "KVP.h"
+#include "format.h"
+#include "User.h"
+#include "pdebug.h"
+
+#include <mysql/mysql.h>
+
 #include <iostream>
 #include <string>
+#include <vector>
+#include <map>
+#include <utility>
 
 #include <stdio.h>
 #include <unistd.h>
@@ -15,130 +25,89 @@
 
 using namespace std;
 
-void* thread_send(void* _client_sockfd){
-	char buffer[32] = {0};
+vector<int> socket_vector;
+map<int, int> id_socket;
+
+void parsing(string &s, KVP *&p){
+	analysis(s, p);
+	if(p->key == "login"){
+		string name("name");
+		string password("password");
+		User u(p->find(name)->value, p->find(password)->value);
+		pdebug << u << endl;
+	}
+}
+
+void *client_thread(void *_client_sockfd){
+	char message[64] = {0};
 	int client_sockfd = *(int*)_client_sockfd;
+	while(1){
+		memset(message, 0, sizeof(message));
+		if(!recv(client_sockfd, message, sizeof(message), 0)){
+			break;
+		}
+		string s(message);
+		KVP *p;
+		parsing(s, p);
+		pdebug << message << endl << flush;
+
+		delete p;
+	}
+}
+
+void* server_thread(void* _client_sockfd){
+	char buffer[32] = {0};
 	while(1){
 		memset(buffer, 0, sizeof(buffer));
 		fgets(buffer, sizeof(buffer), stdin);
 		buffer[strlen(buffer) - 1] = '\0';
-		send(client_sockfd, buffer, strlen(buffer), 0);
+		send(*socket_vector.begin(), buffer, strlen(buffer), 0);
 	}
 }
-
-void* thread_recv(void* _client_sockfd){
-	char buffer[8192] = {0};
-	int client_sockfd = *(int*)_client_sockfd;
-	while(1){
-		memset(buffer, 0, sizeof(buffer));
-		if(!recv(client_sockfd, buffer, sizeof(buffer), 0)){
-			break;
-		}
-		printf("%s", buffer);
-		fflush(stdout);
-	}
-}
-
-//void string_analysis2(int client_sockfd, char* message){
-//	if(!strncmp(message, "login", strlen("login"))){
-//		if(!strncmp(message, "login|name ", strlen("login|name "))){
-//			
-//		}
-//	} else if (!strncmp(message, "regist", strlen("regist"))){
-//		
-//	}
-//}
-//
-//void string_analysis(int client_sockfd, char* message){
-//	char key[32] = {0}, value[32] = {0};
-//	sscanf(message, "%s %s", key, value);
-//	int ret = 0;
-//	static char name[32] = {0}, password[32] = {0};
-//	if(!strcmp(key, "name")){
-//		FILE* fp = fopen("user_info", "a+");
-//		while(fscanf(fp, "%s %s", name, password) != EOF){
-//			if(!strcmp(value, name)){
-//				ret = 1;
-//				send(client_sockfd, &ret, sizeof(int), 0);
-//				return;
-//			}
-//		}
-//		ret = 0;
-//		send(client_sockfd, &ret, sizeof(int), 0);
-//	} else if (!strcmp(key, "password")) {
-//		if(!strcmp(value, password)){
-//			ret = 1;
-//			send(client_sockfd, &ret, sizeof(int), 0);
-//		} else {
-//			ret = 0;
-//			send(client_sockfd, &ret, sizeof(int), 0);
-//		}
-//	}
-//}
-
-//void string_analysis(int client_sockfd, char* message) {
-//	static char name[32] = {0}, password[32] = {0};
-//	int ret = 0;
-//	if (!strncmp(message, "name ", strlen("name "))) {
-//		FILE* fp = fopen("user_info", "a+");
-//		char buf[64] = {0};
-//		while (fgets(buf, sizeof(buf), fp)) {
-//			buf[strlen(buf) - 1] = '\0';
-//			if (!strncmp(buf, message + strlen("name "), strlen(message + strlen("name ")))) {
-//				strncpy(name, buf, strchr(buf, ' ') - buf);
-//				strcpy(password, strchr(buf, ' ') + 1);
-//				ret = 1;
-//				send(client_sockfd, &ret, sizeof(int), 0);
-//				return;
-//			}
-//		}
-//		ret = 0;
-//		send(client_sockfd, &ret, sizeof(int), 0);
-//	} else if (!strncmp(message, "password ", strlen("password "))) {
-//		if (!strcmp(password, message + strlen("password "))) {
-//			ret = 1;
-//			send(client_sockfd, &ret, sizeof(int), 0);
-//		} else {
-//			ret = 0;
-//			send(client_sockfd, &ret, sizeof(int), 0);
-//		}
-//	}
-//}
 
 int main(){
 	unsigned short port = 8080;
 	struct sockaddr_in server_sockaddr;
 
-	int server_sock = socket(AF_INET, SOCK_STREAM, 0);
+	int server_sockfd = socket(AF_INET, SOCK_STREAM, 0);
 	//设置调用closesocket()后，仍可继续重用该socket.(调用closesocket()一般不会立即关闭socket,而经历TIME_WAIT的过程.)
 	bool bReuseaddr = true;
-	setsockopt(server_sock,SOL_SOCKET,SO_REUSEADDR,(const char*)&bReuseaddr,sizeof(bReuseaddr));
+	setsockopt(server_sockfd,SOL_SOCKET,SO_REUSEADDR,(const char*)&bReuseaddr,sizeof(bReuseaddr));
 
 	memset(&server_sockaddr, 0, sizeof(server_sockaddr));
 	server_sockaddr.sin_family = AF_INET;
 	server_sockaddr.sin_port = htons(port);
 	server_sockaddr.sin_addr.s_addr = htonl(INADDR_ANY);
 
-	bind(server_sock, (struct sockaddr*)&server_sockaddr, sizeof(struct sockaddr));
-	listen(server_sock, 2);
+	bind(server_sockfd, (struct sockaddr*)&server_sockaddr, sizeof(struct sockaddr));
+	//!!!
+	listen(server_sockfd, 4);
 
-	struct sockaddr_in client_sockfdaddr;
-	socklen_t client_sockaddr_len = sizeof(client_sockfdaddr);
-	int client_sockfd = accept(server_sock, (struct sockaddr*)&client_sockfdaddr, &client_sockaddr_len);
+	//线程分离
+	pthread_attr_t attr;
+	pthread_attr_init(&attr);
+	pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
 
-	pthread_t tid1, tid2;
-	pthread_create(&tid1, NULL, thread_recv, &client_sockfd);
-	pthread_create(&tid2, NULL, thread_send, &client_sockfd);
+	pthread_t server_thread_t;
+	pthread_create(&server_thread_t, &attr, server_thread, NULL);
 
-	//pthread_join(tid1, NULL);
+	while(true){
+		struct sockaddr_in client_sockfdaddr;
+		socklen_t client_sockaddr_len = sizeof(client_sockfdaddr);
+
+		int client_sockfd = accept(server_sockfd, (struct sockaddr*)&client_sockfdaddr, &client_sockaddr_len);
+
+		//添加客户端socket到vector
+		socket_vector.push_back(client_sockfd);
+
+		pthread_t tid;
+		pthread_create(&tid, &attr, client_thread, &client_sockfd);
+	}
+
+	//pthread_join(tid, NULL);
+
 	while(1);
 
-	//char buf[128] = {0};
-	//while(1){
-	//	memset(buf, 0, sizeof(buf));
-	//	if(!recv(client_sockfd, buf, sizeof(buf), 0)){
-	//		break;
-	//	}
-	//	string_analysis(client_sockfd, buf);
-	//}
+	close(server_sockfd);
+	//close(client_sockfd);
 }

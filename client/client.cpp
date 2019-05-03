@@ -1,4 +1,7 @@
 #include "format.h"
+#include "KVP.h"
+#include "User.h"
+#include "pdebug.h"
 
 #include <iostream>
 #include <string>
@@ -14,19 +17,32 @@
 
 using namespace std;
 
-void login(void){
+void login(void *fd){
 	string name, password;
-	cin >> name >> password;
-	while(getchar() != '\n'){
-		continue;
-	}
+	cout << "请输入账号";
+	cin >> name;
+	cout << "请输入密码";
+	cin >> password;
+
+	KVP *login_kvp = new KVP("login");
+	KVP *name_kvp = new KVP("name", name);
+	KVP *password_kvp = new KVP("password", password);
+
+	login_kvp->sub = name_kvp;
+	name_kvp->next = password_kvp;
+
+	string s;
+	format(s, login_kvp);
+	pdebug << s << endl;
+	send(*(int*)fd, s.c_str(), s.length(), 0);
+
+	delete login_kvp;
 }
 
 void* t_send(void* fd){
-	login();
+	login(fd);
 	char message[64] = {0};
 	while(true){
-		cout << "send" << endl;
 		memset(message, 0, sizeof(message));
 		fgets(message, sizeof(message), stdin);
 		message[strlen(message) - 1] = '\0';
@@ -37,13 +53,11 @@ void* t_send(void* fd){
 void* t_recv(void* fd){
 	char message[64] = {0};
 	while(true){
-		cout << "recv" << endl;
 		memset(message, 0, sizeof(message));
 		if(!recv(*(int*)fd, message, sizeof(message), 0)){
 			break;
 		}
-		printf("%s\n", message);
-		fflush(stdout);
+		pdebug << message << endl << flush;
 	}
 }
 
@@ -74,6 +88,8 @@ int main(int argc, char* argv[]){
 
 	pthread_join(tid1, NULL);
 	pthread_join(tid2, NULL);
+
+	close(fd);
 
 	//while(true){}
 
