@@ -4,7 +4,7 @@
 using namespace std;
 
 User::~User(){
-	pdebug << name << "destructor" << endl;
+	pdebug << name << " destructor" << endl;
 }
 
 std::ostream& operator<<(std::ostream& out, User& u){
