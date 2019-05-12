@@ -4,8 +4,8 @@ user.cpp = ~/a/parrot/user/src/user.cpp
 KVP.h = ~/a/parrot/data_transmission/include/test/
 KVP.cpp = ~/a/parrot/data_transmission/src/test/KVP.cpp
 
-format.h = ~/a/parrot/data_transmission/include/test/
-#format.h = ../../../data_transmission/include/test/
+#format.h = ~/a/parrot/data_transmission/include/test/
+format.h = ../../../data_transmission/include/test/
 format.cpp = ~/a/parrot/data_transmission/src/test/format.cpp
 
 qdebug.h = ~/a/parrot/tools/include/

@@ -1,5 +1,5 @@
-#ifndef KVP_H_
-#define KVP_H_
+#ifndef KVP_H
+#define KVP_H
 
 #include <string>
 

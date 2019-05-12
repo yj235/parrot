@@ -60,7 +60,7 @@ void analysis_2(string::iterator &i1, string::iterator &i2, KVP *&p){
 		next(i2);
 		return;
 	}
-	if(*i1 = '}' && *i2 == '{'){
+	if(*i1 == '}' && *i2 == '{'){
 		next(i1);
 		next(i2);
 		analysis_2(i1, i2, p->next);

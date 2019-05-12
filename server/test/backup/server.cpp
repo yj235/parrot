@@ -11,7 +11,6 @@
 #include <map>
 #include <unordered_map>
 #include <utility>
-#include <queue>
 
 #include <stdio.h>
 #include <unistd.h>
@@ -27,7 +26,7 @@
 
 using namespace std;
 
-//vector<int> socket_vector;
+vector<int> socket_vector;
 unordered_map<string, int>user_socket;
 
 void parsing(string &s, KVP *&p, int client_sockfd){
@@ -48,11 +47,6 @@ void parsing(string &s, KVP *&p, int client_sockfd){
 		} else {
 			pdebug << "failed" << endl;
 		}
-	} else if ("send" == p->key){
-		//pdebug << "shide" << endl;
-		KVP *obj = p->sub;
-		send(user_socket[obj->key], obj->value.c_str(), obj->value.length(), 0);
-		//send(user_socket["na"], "nihao", strlen("nihao"), 0);
 	}
 }
 
@@ -73,37 +67,13 @@ void *client_thread(void *_client_sockfd){
 	}
 }
 
-void* server_thread_0(void* _client_sockfd){
-	char buffer[32] = {0};
-	string name;
-	while(1){
-		cin >> name;
-		while(getchar() != '\n');
-		memset(buffer, 0, sizeof(buffer));
-		fgets(buffer, sizeof(buffer), stdin);
-		buffer[strlen(buffer) - 1] = '\0';
-		//send(*socket_vector.begin(), buffer, strlen(buffer), 0);
-		send(user_socket["na"], buffer, strlen(buffer), 0);
-	}
-}
-
 void* server_thread(void* _client_sockfd){
-	string name;
-	string message;
-	while(1){
-		cin >> name >> message;
-		while(getchar() != '\n');
-		send(user_socket[name], message.c_str(), message.length(), 0);
-	}
-}
-
-void* server_thread_2(void* _client_sockfd){
 	char buffer[32] = {0};
 	while(1){
 		memset(buffer, 0, sizeof(buffer));
 		fgets(buffer, sizeof(buffer), stdin);
 		buffer[strlen(buffer) - 1] = '\0';
-		send(*(int*)_client_sockfd, buffer, strlen(buffer), 0);
+		send(*socket_vector.begin(), buffer, strlen(buffer), 0);
 	}
 }
 
@@ -112,7 +82,7 @@ int main(){
 	struct sockaddr_in server_sockaddr;
 
 	int server_sockfd = socket(AF_INET, SOCK_STREAM, 0);
-	//设置调用closesocket()后，仍可继续重用该socket.(调用closesocket()一般不会立即关闭socket,而经历TIME_WAIT的过程.) //好像并没有用?
+	//设置调用closesocket()后，仍可继续重用该socket.(调用closesocket()一般不会立即关闭socket,而经历TIME_WAIT的过程.)
 	bool bReuseaddr = true;
 	setsockopt(server_sockfd,SOL_SOCKET,SO_REUSEADDR,(const char*)&bReuseaddr,sizeof(bReuseaddr));
 
@@ -140,7 +110,7 @@ int main(){
 		int client_sockfd = accept(server_sockfd, (struct sockaddr*)&client_sockfdaddr, &client_sockaddr_len);
 
 		//添加客户端socket到vector
-		//socket_vector.push_back(client_sockfd);
+		socket_vector.push_back(client_sockfd);
 
 		pthread_t tid;
 		pthread_create(&tid, &attr, client_thread, &client_sockfd);
