@@ -52,23 +52,34 @@ void *t_send_0(void *fd){
 	}
 }
 
-void *t_send(void *fd){
+//new
+void *t_send__0(void *fd){
 	login(fd);
 	string message;
 	while(true){
 		getline(cin, message);
-		message = "{send{" + message + "}}";
+		//while(getchar() != '\n');
+		//message = "{send{" + message + "}}";
+		message = "{room{1 " + message + "}}";
 		pdebug << message << endl;
 		send(*(int*)fd, message.c_str(), message.length(), 0);
 	}
 }
 
-void *t_send_2(void *fd){
+void *t_send(void *fd){
 	login(fd);
-	char message[64] = "{send{nb hello}}";
+	string head;
+	string key;
+	string value;
+	string message;
 	while(true){
-		getchar();
-		send(*(int*)fd, message, strlen(message), 0);
+		cin >> head >> key;
+		getline(cin, value);
+		//while(getchar() != '\n');
+		//message = "{send{" + message + "}}";
+		message = "{" + head + "{" + key + " " + value + "}}";
+		pdebug << message << endl;
+		send(*(int*)fd, message.c_str(), message.length(), 0);
 	}
 }
 

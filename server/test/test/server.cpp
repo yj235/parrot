@@ -10,6 +10,7 @@
 #include <vector>
 #include <map>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <queue>
 
@@ -27,8 +28,10 @@
 
 using namespace std;
 
-//vector<int> socket_vector;
+//用户-端口map
 unordered_map<string, int>user_socket;
+//聊天室
+unordered_map<string, unordered_set<int>> room;
 
 void parsing(string &s, KVP *&p, int client_sockfd){
 	analysis(s, p);
@@ -49,10 +52,16 @@ void parsing(string &s, KVP *&p, int client_sockfd){
 			pdebug << "failed" << endl;
 		}
 	} else if ("send" == p->key){
-		//pdebug << "shide" << endl;
 		KVP *obj = p->sub;
 		send(user_socket[obj->key], obj->value.c_str(), obj->value.length(), 0);
-		//send(user_socket["na"], "nihao", strlen("nihao"), 0);
+	} else if ("room" == p->key){
+		room[p->sub->key].insert(client_sockfd);
+		for(auto &v : room[p->sub->key]){
+			//send(v, "room...", strlen("room..."), 0);
+			send(v, p->sub->value.c_str(), p->sub->value.length(), 0);
+		}
+	} else {
+		pdebug << "other" << endl;
 	}
 }
 
@@ -91,8 +100,10 @@ void* server_thread(void* _client_sockfd){
 	string name;
 	string message;
 	while(1){
-		cin >> name >> message;
-		while(getchar() != '\n');
+		cin >> name;
+		getline(cin, message);
+		//while(getchar() != '\n');
+		message.erase(0,1);
 		send(user_socket[name], message.c_str(), message.length(), 0);
 	}
 }

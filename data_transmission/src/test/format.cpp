@@ -53,6 +53,7 @@ void analysis_real(string::iterator &i1, string::iterator &i2, KVP *&p){
 		next(i2);
 
 	}
+	//有问题 有sub的不能有value
 	if(*i1 == '{' && *i2 == '{'){
 		p = new KVP(string(i1 + 1, i2));
 		pdebug << p->key << endl;
