@@ -1,4 +1,8 @@
-#include "../include/KVP.h"
+//问题 为什么不可以
+//#include "~/a/parrot/data_transmission/include/KVP.h"
+//#include "~/a/parrot/tools/include/pdebug.h"
+
+#include "../include/test/KVP.h"
 #include "../../tools/include/pdebug.h"
 
 #include <iostream>
@@ -34,4 +38,9 @@ KVP *KVP::find(string& s){
 		}
 	}
 	return nullptr;
+}
+
+KVP *KVP::find(const char* _s){
+	string s(_s);
+	return find(s);
 }

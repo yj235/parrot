@@ -36,11 +36,11 @@ unordered_map<string, unordered_set<int>> room;
 void parsing(string &s, KVP *&p, int client_sockfd){
 	analysis(s, p);
 	if(p->key == "login"){
-		User u(p->find("name")->value, p->find("password")->value);
+		User u(p->sub->key, p->sub->value);
 		pdebug << u << endl;
 		string sql = "select id from user where name=\"" + u.name + "\" and password=\"" + u.password + "\"";
 		pdebug << sql << endl;
-		char*p = my_query(sql.c_str());
+		char *p = my_query(sql.c_str());
 		if(p){
 			pdebug << "successed" << endl;
 			pdebug << p << endl;
@@ -48,8 +48,10 @@ void parsing(string &s, KVP *&p, int client_sockfd){
 			for(auto &v: user_socket){
 				cout << v.first << " " << v.second << endl;
 			}
+			send(client_sockfd, "1", 2, 0);
 		} else {
 			pdebug << "failed" << endl;
+			send(client_sockfd, "0", 2, 0);
 		}
 	} else if ("send" == p->key){
 		KVP *obj = p->sub;
@@ -57,7 +59,6 @@ void parsing(string &s, KVP *&p, int client_sockfd){
 	} else if ("room" == p->key){
 		room[p->sub->key].insert(client_sockfd);
 		for(auto &v : room[p->sub->key]){
-			//send(v, "room...", strlen("room..."), 0);
 			send(v, p->sub->value.c_str(), p->sub->value.length(), 0);
 		}
 	} else {
@@ -74,25 +75,11 @@ void *client_thread(void *_client_sockfd){
 			break;
 		}
 		string s(message);
+		pdebug << message << endl;
 		KVP *p;
 		parsing(s, p, client_sockfd);
-		pdebug << message << endl;
 
 		delete p;
-	}
-}
-
-void* server_thread_0(void* _client_sockfd){
-	char buffer[32] = {0};
-	string name;
-	while(1){
-		cin >> name;
-		while(getchar() != '\n');
-		memset(buffer, 0, sizeof(buffer));
-		fgets(buffer, sizeof(buffer), stdin);
-		buffer[strlen(buffer) - 1] = '\0';
-		//send(*socket_vector.begin(), buffer, strlen(buffer), 0);
-		send(user_socket["na"], buffer, strlen(buffer), 0);
 	}
 }
 
@@ -105,16 +92,6 @@ void* server_thread(void* _client_sockfd){
 		//while(getchar() != '\n');
 		message.erase(0,1);
 		send(user_socket[name], message.c_str(), message.length(), 0);
-	}
-}
-
-void* server_thread_2(void* _client_sockfd){
-	char buffer[32] = {0};
-	while(1){
-		memset(buffer, 0, sizeof(buffer));
-		fgets(buffer, sizeof(buffer), stdin);
-		buffer[strlen(buffer) - 1] = '\0';
-		send(*(int*)_client_sockfd, buffer, strlen(buffer), 0);
 	}
 }
 
@@ -150,17 +127,11 @@ int main(){
 
 		int client_sockfd = accept(server_sockfd, (struct sockaddr*)&client_sockfdaddr, &client_sockaddr_len);
 
-		//添加客户端socket到vector
-		//socket_vector.push_back(client_sockfd);
-
 		pthread_t tid;
 		pthread_create(&tid, &attr, client_thread, &client_sockfd);
 	}
 
-	//pthread_join(tid, NULL);
-
 	while(1);
 
 	close(server_sockfd);
-	//close(client_sockfd);
 }

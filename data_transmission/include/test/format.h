@@ -6,6 +6,6 @@
 #include <string>
 
 void format(std::string &s, KVP *k);
-void analysis(std::string &sin, KVP *&p);
+void analysis(std::string &s, KVP *&p);
 
 #endif

@@ -27,11 +27,9 @@ void login(void *fd){
 	while(getchar() != '\n');
 
 	KVP *login_kvp = new KVP("login");
-	KVP *name_kvp = new KVP("name", name);
-	KVP *password_kvp = new KVP("password", password);
+	KVP *user = new KVP(name, password);
 
-	login_kvp->sub = name_kvp;
-	name_kvp->next = password_kvp;
+	login_kvp->sub = user;
 
 	string s;
 	format(s, login_kvp);
@@ -39,31 +37,6 @@ void login(void *fd){
 	send(*(int*)fd, s.c_str(), s.length(), 0);
 
 	delete login_kvp;
-}
-
-void *t_send_0(void *fd){
-	login(fd);
-	char message[64] = {0};
-	while(true){
-		memset(message, 0, sizeof(message));
-		fgets(message, sizeof(message), stdin);
-		message[strlen(message) - 1] = '\0';
-		send(*(int*)fd, message, strlen(message), 0);
-	}
-}
-
-//new
-void *t_send__0(void *fd){
-	login(fd);
-	string message;
-	while(true){
-		getline(cin, message);
-		//while(getchar() != '\n');
-		//message = "{send{" + message + "}}";
-		message = "{room{1 " + message + "}}";
-		pdebug << message << endl;
-		send(*(int*)fd, message.c_str(), message.length(), 0);
-	}
 }
 
 void *t_send(void *fd){
@@ -75,15 +48,14 @@ void *t_send(void *fd){
 	while(true){
 		cin >> head >> key;
 		getline(cin, value);
-		//while(getchar() != '\n');
-		//message = "{send{" + message + "}}";
+		value.erase(0,1);
 		message = "{" + head + "{" + key + " " + value + "}}";
 		pdebug << message << endl;
 		send(*(int*)fd, message.c_str(), message.length(), 0);
 	}
 }
 
-void* t_recv(void* fd){
+void *t_recv(void* fd){
 	char message[64] = {0};
 	while(true){
 		memset(message, 0, sizeof(message));
@@ -123,8 +95,6 @@ int main(int argc, char* argv[]){
 	pthread_join(tid2, NULL);
 
 	close(fd);
-
-	//while(true){}
 
 	return 0;
 }

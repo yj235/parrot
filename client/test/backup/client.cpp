@@ -23,6 +23,8 @@ void login(void *fd){
 	cin >> name;
 	cout << "请输入密码";
 	cin >> password;
+	//cin.sync(); //没用
+	while(getchar() != '\n');
 
 	KVP *login_kvp = new KVP("login");
 	KVP *name_kvp = new KVP("name", name);
@@ -39,7 +41,7 @@ void login(void *fd){
 	delete login_kvp;
 }
 
-void* t_send(void* fd){
+void *t_send_0(void *fd){
 	login(fd);
 	char message[64] = {0};
 	while(true){
@@ -50,7 +52,39 @@ void* t_send(void* fd){
 	}
 }
 
-void* t_recv(void* fd){
+//new
+void *t_send__0(void *fd){
+	login(fd);
+	string message;
+	while(true){
+		getline(cin, message);
+		//while(getchar() != '\n');
+		//message = "{send{" + message + "}}";
+		message = "{room{1 " + message + "}}";
+		pdebug << message << endl;
+		send(*(int*)fd, message.c_str(), message.length(), 0);
+	}
+}
+
+void *t_send(void *fd){
+	login(fd);
+	string head;
+	string key;
+	string value;
+	string message;
+	while(true){
+		cin >> head >> key;
+		getline(cin, value);
+		value.erase(0,1);
+		//while(getchar() != '\n');
+		//message = "{send{" + message + "}}";
+		message = "{" + head + "{" + key + " " + value + "}}";
+		pdebug << message << endl;
+		send(*(int*)fd, message.c_str(), message.length(), 0);
+	}
+}
+
+void *t_recv(void* fd){
 	char message[64] = {0};
 	while(true){
 		memset(message, 0, sizeof(message));
@@ -64,7 +98,7 @@ void* t_recv(void* fd){
 int main(int argc, char* argv[]){
 	int fd = socket(AF_INET, SOCK_STREAM, 0);
 
-	char* s_ip = "192.168.196.162";
+	char* s_ip = "192.168.196.168";
 	short port = 8080;
 
 	struct sockaddr_in s_sockaddr;

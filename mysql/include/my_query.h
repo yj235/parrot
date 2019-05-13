@@ -1,6 +1,11 @@
 #ifndef MY_QYERY_H
 #define MY_QYERY_H
 
-bool my_query(const char* p);
+#include <string>
+#include <vector>
+
+#include <stdio.h>
+
+char *my_query(const char* p);
 
 #endif

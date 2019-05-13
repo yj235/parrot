@@ -3,13 +3,16 @@
 #include "User.h"
 #include "pdebug.h"
 
-#include <mysql/mysql.h>
+#include "my_query.h"
 
 #include <iostream>
 #include <string>
 #include <vector>
 #include <map>
+#include <unordered_map>
+#include <unordered_set>
 #include <utility>
+#include <queue>
 
 #include <stdio.h>
 #include <unistd.h>
@@ -25,16 +28,41 @@
 
 using namespace std;
 
-vector<int> socket_vector;
-map<int, int> id_socket;
+//用户-端口map
+unordered_map<string, int>user_socket;
+//聊天室
+unordered_map<string, unordered_set<int>> room;
 
-void parsing(string &s, KVP *&p){
+void parsing(string &s, KVP *&p, int client_sockfd){
 	analysis(s, p);
 	if(p->key == "login"){
-		string name("name");
-		string password("password");
-		User u(p->find(name)->value, p->find(password)->value);
+		User u(p->find("name")->value, p->find("password")->value);
 		pdebug << u << endl;
+		string sql = "select id from user where name=\"" + u.name + "\" and password=\"" + u.password + "\"";
+		pdebug << sql << endl;
+		char *p = my_query(sql.c_str());
+		if(p){
+			pdebug << "successed" << endl;
+			pdebug << p << endl;
+			user_socket.insert({u.name, client_sockfd});
+			for(auto &v: user_socket){
+				cout << v.first << " " << v.second << endl;
+			}
+			send(client_sockfd, "1", 1, 0);
+		} else {
+			pdebug << "failed" << endl;
+			send(client_sockfd, "0", 1, 0);
+		}
+	} else if ("send" == p->key){
+		KVP *obj = p->sub;
+		send(user_socket[obj->key], obj->value.c_str(), obj->value.length(), 0);
+	} else if ("room" == p->key){
+		room[p->sub->key].insert(client_sockfd);
+		for(auto &v : room[p->sub->key]){
+			send(v, p->sub->value.c_str(), p->sub->value.length(), 0);
+		}
+	} else {
+		pdebug << "other" << endl;
 	}
 }
 
@@ -47,21 +75,47 @@ void *client_thread(void *_client_sockfd){
 			break;
 		}
 		string s(message);
+		pdebug << message << endl;
 		KVP *p;
-		parsing(s, p);
-		pdebug << message << endl << flush;
+		parsing(s, p, client_sockfd);
 
 		delete p;
 	}
 }
 
+void* server_thread_0(void* _client_sockfd){
+	char buffer[32] = {0};
+	string name;
+	while(1){
+		cin >> name;
+		while(getchar() != '\n');
+		memset(buffer, 0, sizeof(buffer));
+		fgets(buffer, sizeof(buffer), stdin);
+		buffer[strlen(buffer) - 1] = '\0';
+		//send(*socket_vector.begin(), buffer, strlen(buffer), 0);
+		send(user_socket["na"], buffer, strlen(buffer), 0);
+	}
+}
+
 void* server_thread(void* _client_sockfd){
+	string name;
+	string message;
+	while(1){
+		cin >> name;
+		getline(cin, message);
+		//while(getchar() != '\n');
+		message.erase(0,1);
+		send(user_socket[name], message.c_str(), message.length(), 0);
+	}
+}
+
+void* server_thread_2(void* _client_sockfd){
 	char buffer[32] = {0};
 	while(1){
 		memset(buffer, 0, sizeof(buffer));
 		fgets(buffer, sizeof(buffer), stdin);
 		buffer[strlen(buffer) - 1] = '\0';
-		send(*socket_vector.begin(), buffer, strlen(buffer), 0);
+		send(*(int*)_client_sockfd, buffer, strlen(buffer), 0);
 	}
 }
 
@@ -70,7 +124,7 @@ int main(){
 	struct sockaddr_in server_sockaddr;
 
 	int server_sockfd = socket(AF_INET, SOCK_STREAM, 0);
-	//设置调用closesocket()后，仍可继续重用该socket.(调用closesocket()一般不会立即关闭socket,而经历TIME_WAIT的过程.)
+	//设置调用closesocket()后，仍可继续重用该socket.(调用closesocket()一般不会立即关闭socket,而经历TIME_WAIT的过程.) //好像并没有用?
 	bool bReuseaddr = true;
 	setsockopt(server_sockfd,SOL_SOCKET,SO_REUSEADDR,(const char*)&bReuseaddr,sizeof(bReuseaddr));
 
@@ -98,7 +152,7 @@ int main(){
 		int client_sockfd = accept(server_sockfd, (struct sockaddr*)&client_sockfdaddr, &client_sockaddr_len);
 
 		//添加客户端socket到vector
-		socket_vector.push_back(client_sockfd);
+		//socket_vector.push_back(client_sockfd);
 
 		pthread_t tid;
 		pthread_create(&tid, &attr, client_thread, &client_sockfd);
