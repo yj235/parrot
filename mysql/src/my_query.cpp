@@ -27,6 +27,7 @@ char* my_query(const char *p){
 	mysql_close(conn);
 
 	if(row){
+		//返回值问题 局部变量
 		return row[0];
 	} 
 	return NULL;

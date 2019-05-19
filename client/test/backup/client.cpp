@@ -17,88 +17,62 @@
 
 using namespace std;
 
-void login(void *fd){
-	string name, password;
-	cout << "请输入账号";
-	cin >> name;
-	cout << "请输入密码";
-	cin >> password;
-	//cin.sync(); //没用
-	while(getchar() != '\n');
-
-	KVP *login_kvp = new KVP("login");
-	KVP *name_kvp = new KVP("name", name);
-	KVP *password_kvp = new KVP("password", password);
-
-	login_kvp->sub = name_kvp;
-	name_kvp->next = password_kvp;
-
-	string s;
-	format(s, login_kvp);
-	pdebug << s << endl;
-	send(*(int*)fd, s.c_str(), s.length(), 0);
-
-	delete login_kvp;
-}
-
-void *t_send_0(void *fd){
-	login(fd);
-	char message[64] = {0};
-	while(true){
-		memset(message, 0, sizeof(message));
-		fgets(message, sizeof(message), stdin);
-		message[strlen(message) - 1] = '\0';
-		send(*(int*)fd, message, strlen(message), 0);
-	}
-}
-
-//new
-void *t_send__0(void *fd){
-	login(fd);
-	string message;
-	while(true){
-		getline(cin, message);
-		//while(getchar() != '\n');
-		//message = "{send{" + message + "}}";
-		message = "{room{1 " + message + "}}";
-		pdebug << message << endl;
-		send(*(int*)fd, message.c_str(), message.length(), 0);
-	}
-}
-
 void *t_send(void *fd){
-	login(fd);
 	string head;
 	string key;
 	string value;
-	string message;
+	string data;
 	while(true){
 		cin >> head >> key;
 		getline(cin, value);
 		value.erase(0,1);
-		//while(getchar() != '\n');
-		//message = "{send{" + message + "}}";
-		message = "{" + head + "{" + key + " " + value + "}}";
-		pdebug << message << endl;
-		send(*(int*)fd, message.c_str(), message.length(), 0);
+		data = "{" + head + "{" + key + " " + value + "}}";
+		pdebug << data << endl;
+		send(*(int*)fd, data.c_str(), data.length(), 0);
 	}
 }
 
 void *t_recv(void* fd){
-	char message[64] = {0};
+	char data[64] = {0};
 	while(true){
-		memset(message, 0, sizeof(message));
-		if(!recv(*(int*)fd, message, sizeof(message), 0)){
+		memset(data, 0, sizeof(data));
+		if(!recv(*(int*)fd, data, sizeof(data), 0)){
 			break;
 		}
-		pdebug << message << endl << flush;
+		pdebug << data << endl;
+		KVP *p;
+		string_to_kvp(data, p);
+		if ("query" == p->key) {
+			if ("name" == p->sub->key) {
+				if ("exist" == p->sub->value) {
+					pdebug << "name exist" << endl;
+				} else {
+					pdebug << "name not exist" << endl;
+				}
+			} else if ("password" == p->sub->key) {
+				if ("correct" == p->sub->value) {
+					pdebug << "password correct" << endl;
+				} else {
+					pdebug << "password incorrect" << endl;
+				}
+			}
+		} else if ("send" == p->key) {
+			cout << p->sub->key << " " << p->sub->value << endl;
+		} else if ("room" == p->key) {
+			cout << p->sub->key << " " << p->sub->value << endl;
+		} else {
+			cout << "other" << endl;
+		}
+		if (p) {
+			delete p;
+		}
 	}
 }
 
 int main(int argc, char* argv[]){
 	int fd = socket(AF_INET, SOCK_STREAM, 0);
 
-	char* s_ip = "192.168.196.168";
+	char* s_ip = "192.168.196.169";
 	short port = 8080;
 
 	struct sockaddr_in s_sockaddr;
@@ -124,8 +98,6 @@ int main(int argc, char* argv[]){
 	pthread_join(tid2, NULL);
 
 	close(fd);
-
-	//while(true){}
 
 	return 0;
 }

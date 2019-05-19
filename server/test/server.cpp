@@ -28,62 +28,91 @@
 
 using namespace std;
 
-//用户-端口map 后期改为id
-unordered_map<string, int>user_socket;
-//聊天室
+//<用户名-端口> 用id?
+unordered_map<string, int>name_socket;
+//<端口-用户名> 用id?
+unordered_map<int, string>socket_name;
+//<用户名 密码>
+unordered_map<string, string>name_password;
+//聊天室 <房间号,socket_fd>
 unordered_map<string, unordered_set<int>> room;
 
-void parsing(string &s, KVP *&p, int client_sockfd){
+void parsing(string &s, KVP *&p, int client_socket){
 	analysis(s, p);
-	if(p->key == "login"){
-		User u(p->sub->key, p->sub->value);
-		pdebug << u << endl;
-		string sql = "select id from user where name=\"" + u.name + "\" and password=\"" + u.password + "\"";
-		pdebug << sql << endl;
-		char *p = my_query(sql.c_str());
-		if(p){
-			pdebug << "successed" << endl;
-			pdebug << p << endl;
-			user_socket.insert({u.name, client_sockfd});
-			for(auto &v: user_socket){
-				cout << v.first << " " << v.second << endl;
-			}
-			send(client_sockfd, "1", 2, 0);
-		} else {
-			pdebug << "failed" << endl;
-			send(client_sockfd, "0", 2, 0);
-		}
-	} else if ("send" == p->key){
+	if ("send" == p->key){
 		KVP *obj = p->sub;
-		send(user_socket[obj->key], obj->value.c_str(), obj->value.length(), 0);
+		pdebug << name_socket[obj->key] << endl;
+		string data = "{send{" + socket_name[client_socket] + " " + obj->value + "}}";
+		send(name_socket[obj->key], data.c_str(), data.length(), 0);
 	} else if ("room" == p->key){
-		room[p->sub->key].insert(client_sockfd);
+		room[p->sub->key].insert(client_socket);
+		string data = "{room{" + socket_name[client_socket] + " " + p->sub->value + "}}";
 		for(auto &v : room[p->sub->key]){
-			send(v, p->sub->value.c_str(), p->sub->value.length(), 0);
+			send(v, data.c_str(), data.length(), 0);
+		}
+	} else if ("query" == p->key){
+		if ("name" == p->sub->key) {
+			string name = p->sub->value;
+			string sql = "select password from user where name=\"" + name + "\"";
+			vector<vector<string>> vvs = my_query(sql);
+			//for(auto &v : vvs){
+			//	for(auto &v2 : v){
+			//		pdebug << v2 << endl;
+			//	}
+			//}
+			if(!vvs.empty()){
+				string password(vvs[0][0]);
+				pdebug << password << endl;
+				socket_name[client_socket] = name;
+				name_password[name] = password;
+				pdebug << "name exist" << endl;
+				string kvp_query("{query{name exist}}");
+				send(client_socket, kvp_query.c_str(), kvp_query.length(), 0);
+			} else {
+				pdebug << "name not exist" << endl;
+				string kvp_query("{query{name not exist}}");
+				send(client_socket, kvp_query.c_str(), kvp_query.length(), 0);
+			}
+		} else if ("password" == p->sub->key) {
+			string password = p->sub->value;
+			if (password == name_password[socket_name[client_socket]]) {
+				name_socket[socket_name[client_socket]] = client_socket;
+				for (auto &v : name_socket) {
+					pdebug << v.first << " " << v.second << endl;
+				}
+				pdebug << "password correct" << endl;
+				string kvp_query("{query{password correct}}");
+				send(client_socket, kvp_query.c_str(), kvp_query.length(), 0);
+			} else {
+				pdebug << "password incorrect" << endl;
+				string kvp_query("{query{password incorrect}}");
+				send(client_socket, kvp_query.c_str(), kvp_query.length(), 0);
+			}
 		}
 	} else {
 		pdebug << "other" << endl;
 	}
 }
 
-void *client_thread(void *_client_sockfd){
+void *client_thread(void *_client_socket){
 	char message[64] = {0};
-	int client_sockfd = *(int*)_client_sockfd;
+	int client_socket = *(int*)_client_socket;
 	while(1){
 		memset(message, 0, sizeof(message));
-		if(!recv(client_sockfd, message, sizeof(message), 0)){
+		if(!recv(client_socket, message, sizeof(message), 0)){
 			break;
 		}
 		string s(message);
 		pdebug << message << endl;
 		KVP *p;
-		parsing(s, p, client_sockfd);
-
-		delete p;
+		parsing(s, p, client_socket);
+		if (p) {
+			delete p;
+		}
 	}
 }
 
-void* server_thread(void* _client_sockfd){
+void* server_thread(void* _client_socket){
 	string name;
 	string message;
 	while(1){
@@ -91,7 +120,7 @@ void* server_thread(void* _client_sockfd){
 		getline(cin, message);
 		//while(getchar() != '\n');
 		message.erase(0,1);
-		send(user_socket[name], message.c_str(), message.length(), 0);
+		send(name_socket[name], message.c_str(), message.length(), 0);
 	}
 }
 
@@ -122,13 +151,13 @@ int main(){
 	pthread_create(&server_thread_t, &attr, server_thread, NULL);
 
 	while(true){
-		struct sockaddr_in client_sockfdaddr;
-		socklen_t client_sockaddr_len = sizeof(client_sockfdaddr);
+		struct sockaddr_in client_socketaddr;
+		socklen_t client_sockaddr_len = sizeof(client_socketaddr);
 
-		int client_sockfd = accept(server_sockfd, (struct sockaddr*)&client_sockfdaddr, &client_sockaddr_len);
+		int client_socket = accept(server_sockfd, (struct sockaddr*)&client_socketaddr, &client_sockaddr_len);
 
 		pthread_t tid;
-		pthread_create(&tid, &attr, client_thread, &client_sockfd);
+		pthread_create(&tid, &attr, client_thread, &client_socket);
 	}
 
 	while(1);

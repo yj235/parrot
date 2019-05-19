@@ -1,20 +1,26 @@
-User.h = ~/a/parrot/user/include/
-user.cpp = ~/a/parrot/user/src/user.cpp
+predir = ../../
 
-KVP.h = ~/a/parrot/data_transmission/include/test/
-KVP.cpp = ~/a/parrot/data_transmission/src/test/KVP.cpp
+User.h = $(predir)../user/include/
+user.cpp = $(predir)..//user/src/user.cpp
 
-format.h = ~/a/parrot/data_transmission/include/test/
-format.cpp = ~/a/parrot/data_transmission/src/test/format.cpp
+KVP.h = $(predir)../data_transmission/include/test/
+KVP.cpp = $(predir)../data_transmission/src/test/KVP.cpp
 
-qdebug.h = ~/a/parrot/tools/include/
+format.h = $(predir)..//data_transmission/include/test/
+format.cpp = $(predir)..//data_transmission/src/test/format.cpp
+
+pdebug.h = $(predir)../tools/include/
 
 mysql.h = /usr/include/mysql
 
-my_query.h = ~/a/parrot/mysql/include/test/
-my_query.cpp = ~/a/parrot/mysql/src/test/my_query.cpp
+my_query.h = $(predir)../mysql/include/test/
+my_query.cpp = $(predir)../mysql/src/test/my_query.cpp
 
 source = $(user.cpp) $(KVP.cpp) $(format.cpp) $(my_query.cpp)
 
 startup:server.cpp
-	g++ -std=c++11 -I $(User.h) -I $(KVP.h) -I $(format.h) -I $(qdebug.h) -I $(mysql.h) -I $(my_query.h) server.cpp $(source) -L /usr/lib/mysql/ -l mysqlclient -l pthread -o startup
+	g++ -std=c++11 -I $(User.h) -I $(KVP.h) -I $(format.h) -I $(pdebug.h) -I $(mysql.h) -I $(my_query.h) server.cpp $(source) -L /usr/lib/mysql/ -l mysqlclient -l pthread -o startup
+
+.PHONY:clean
+clean:
+	rm ./startup
