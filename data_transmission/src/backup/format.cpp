@@ -1,5 +1,10 @@
-#include "../include/format.h"
-#include "../include/KVP.h"
+//为什么不可以
+//#include "~/a/parrot/data_transmission/include/format.h"
+//#include "~/a/parrot/data_transmission/include/KVP.h"
+//#include "~/a/parrot/tools/include/pdebug.h"
+
+#include "../include/test/KVP.h"
+#include "../include/test/format.h"
 #include "../../tools/include/pdebug.h"
 
 #include <iostream>
@@ -39,7 +44,7 @@ void init(string &sin, string::iterator &i1, string::iterator &i2){
 	next(i2);
 }
 
-void analysis_2(string::iterator &i1, string::iterator &i2, KVP *&p){
+void analysis_real(string::iterator &i1, string::iterator &i2, KVP *&p){
 	if(*i1 == '{' && *i2 == '}'){
 		string key(i1 + 1, i1 + string(i1, i2).find(' '));
 		string value(i1 + string(i1, i2).find(' ') + 1, i2);
@@ -49,12 +54,13 @@ void analysis_2(string::iterator &i1, string::iterator &i2, KVP *&p){
 		next(i2);
 
 	}
+	//有问题 有sub的不能有value
 	if(*i1 == '{' && *i2 == '{'){
 		p = new KVP(string(i1 + 1, i2));
 		pdebug << p->key << endl;
 		next(i1);
 		next(i2);
-		analysis_2(i1, i2, p->sub);
+		analysis_real(i1, i2, p->sub);
 	}
 	if(*i1 == '}' && *i2 == '}'){
 		next(i1);
@@ -64,7 +70,7 @@ void analysis_2(string::iterator &i1, string::iterator &i2, KVP *&p){
 	if(*i1 == '}' && *i2 == '{'){
 		next(i1);
 		next(i2);
-		analysis_2(i1, i2, p->next);
+		analysis_real(i1, i2, p->next);
 		return;
 	}
 }
@@ -72,5 +78,5 @@ void analysis_2(string::iterator &i1, string::iterator &i2, KVP *&p){
 void analysis(string &s, KVP *&p){
 	string::iterator i1, i2;
 	init(s, i1, i2);
-	analysis_2(i1, i2, p);
+	analysis_real(i1, i2, p);
 }

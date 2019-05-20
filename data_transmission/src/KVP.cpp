@@ -1,9 +1,9 @@
 //问题 为什么不可以
-//#include "~/a/parrot/data_transmission/include/KVP.h"
+//#include "~/a/parrot/data_transmission/include/test/KVP.h"
 //#include "~/a/parrot/tools/include/pdebug.h"
 
-#include "../include/test/KVP.h"
-#include "../../tools/include/pdebug.h"
+#include "../../include/test/KVP.h"
+#include "../../../tools/include/pdebug.h"
 
 #include <iostream>
 

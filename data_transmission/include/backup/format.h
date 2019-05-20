@@ -1,5 +1,5 @@
-#ifndef FORMAT_H_
-#define FORMAT_H_
+#ifndef FORMAT_H
+#define FORMAT_H
 
 #include "KVP.h"
 
