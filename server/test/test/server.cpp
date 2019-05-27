@@ -28,12 +28,14 @@
 
 using namespace std;
 
-//<用户名-端口> 用id?
-unordered_map<string, int>name_socket;
 //<端口-用户名> 用id?
-unordered_map<int, string>socket_name;
+unordered_map<int, string> socket_name;
+//<端口-id>
+unordered_map<int, int> socket_id;
+//<用户名-端口> 用id?
+unordered_map<string, int> name_socket;
 //<用户名 密码>
-unordered_map<string, string>name_password;
+unordered_map<string, string> name_password;
 //聊天室 <房间号,socket_fd>
 unordered_map<string, unordered_set<int>> room;
 
@@ -41,7 +43,6 @@ void parsing(string &s, KVP *&p, int client_socket){
 	analysis(s, p);
 	if ("send" == p->key){
 		KVP *obj = p->sub;
-		pdebug << name_socket[obj->key] << endl;
 		string data = "{send{" + socket_name[client_socket] + " " + obj->value + "}}";
 		send(name_socket[obj->key], data.c_str(), data.length(), 0);
 	} else if ("room" == p->key){
@@ -51,8 +52,20 @@ void parsing(string &s, KVP *&p, int client_socket){
 			send(v, data.c_str(), data.length(), 0);
 		}
 	} else if ("query" == p->key){
-		if ("name" == p->sub->key) {
+		if ("contacts" == p->value) {
+			string id = to_string(socket_id[client_socket]);
+			string sql = "select user.id, user.name from user, " + id + "_contacts where user.id=" + id + "_contacts.id";
+			vector<vector<string>> vvs = my_query(sql);
+			KVP *k = new KVP("contacts");
+			KVP *temp = NULL;
+			k->sub = temp;
+			for (auto &v : vvs) {
+				temp = new KVP(v[0], v[1]);
+			}
+			send(client_socket, data.c_str(), data.length(), 0);
+		} else if ("name" == p->sub->key) {
 			string name = p->sub->value;
+			socket_name[client_socket] = name;
 			string sql = "select password from user where name=\"" + name + "\"";
 			vector<vector<string>> vvs = my_query(sql);
 			//for(auto &v : vvs){
@@ -63,7 +76,6 @@ void parsing(string &s, KVP *&p, int client_socket){
 			if(!vvs.empty()){
 				string password(vvs[0][0]);
 				pdebug << password << endl;
-				socket_name[client_socket] = name;
 				name_password[name] = password;
 				pdebug << "name exist" << endl;
 				string kvp_query("{query{name exist}}");
@@ -74,19 +86,48 @@ void parsing(string &s, KVP *&p, int client_socket){
 				send(client_socket, kvp_query.c_str(), kvp_query.length(), 0);
 			}
 		} else if ("password" == p->sub->key) {
+			string name = socket_name[client_socket];
 			string password = p->sub->value;
-			if (password == name_password[socket_name[client_socket]]) {
-				name_socket[socket_name[client_socket]] = client_socket;
-				for (auto &v : name_socket) {
-					pdebug << v.first << " " << v.second << endl;
+			unordered_map<string, string>::iterator it;
+			it = name_password.find(name);
+			if (name_password.end() != it) {
+				if (password == name_password[name]) {
+					name_socket[name] = client_socket;
+					for (auto &v : name_socket) {
+						pdebug << v.first << " " << v.second << endl;
+					}
+					pdebug << "password correct" << endl;
+					string kvp_query("{query{password correct}}");
+					send(client_socket, kvp_query.c_str(), kvp_query.length(), 0);
+					string sql = "select id from user where name=\"" + name + "\"";
+					vector<vector<string>> vvs = my_query(sql);
+					socket_id[client_socket] = stoi(vvs[0][0]);
+				} else {
+					pdebug << "password incorrect" << endl;
+					string kvp_query("{query{password incorrect}}");
+					send(client_socket, kvp_query.c_str(), kvp_query.length(), 0);
 				}
-				pdebug << "password correct" << endl;
-				string kvp_query("{query{password correct}}");
-				send(client_socket, kvp_query.c_str(), kvp_query.length(), 0);
 			} else {
-				pdebug << "password incorrect" << endl;
-				string kvp_query("{query{password incorrect}}");
-				send(client_socket, kvp_query.c_str(), kvp_query.length(), 0);
+				string sql = "insert into user(name, password) values(\"" + name + "\", \"" + password + "\")";
+				string data;
+				if (my_query_int(sql)) {
+					data = "{regist failed}";
+					pdebug << "user insert failed" << endl;
+				} else {
+					string sql = "select id from user where name=\"" + socket_name[client_socket] + "\"";
+					vector<vector<string>> vvs = my_query(sql);
+					socket_id[client_socket] = stoi(vvs[0][0]);
+					sql = "create table " + name + "_contacts(id int unsigned not null auto_increment primary key, contact_id int unsigned not null)";
+					if (my_query_int(sql)) {
+						pdebug << "create table contacts failed" << endl;
+					} else {
+						pdebug << "create table contacts successed" << endl;
+					}
+					name_socket[name] = client_socket;
+					data = "{regist success}";
+					pdebug << "user insert success" << endl;
+				}
+				send(client_socket, data.c_str(), data.length(), 0);
 			}
 		}
 	} else {
