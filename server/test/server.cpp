@@ -39,87 +39,12 @@ unordered_map<int, string>socket_name;
 unordered_map<string, string>name_password;
 //<端口,id>
 unordered_map<int, unsigned int>socket_id;
+//<id,端口>
+unordered_map<unsigned int, int>id_socket;
 //聊天室 <房间号,socket_fd>
 unordered_map<string, unordered_set<int>> room;
-
-//void parsing(string &s, KVP *&p, int client_socket){
-//	analysis(s, p);
-//	if ("send" == p->key){
-//		KVP *obj = p->sub;
-//		string data = "{send{" + socket_name[client_socket] + " " + obj->value + "}}";
-//		send(name_socket[obj->key], data.c_str(), data.length(), 0);
-//	} else if ("room" == p->key){
-//		room[p->sub->key].insert(client_socket);
-//		string data = "{room{" + socket_name[client_socket] + " " + p->sub->value + "}}";
-//		for(auto &v : room[p->sub->key]){
-//			send(v, data.c_str(), data.length(), 0);
-//		}
-//	} else if ("query" == p->key){
-//		if ("name" == p->sub->key) {
-//			string name = p->sub->value;
-//			socket_name[client_socket] = name;
-//			string sql = "select password from user where name=\"" + name + "\"";
-//			vector<vector<string>> vvs = my_query(sql);
-//			//for(auto &v : vvs){
-//			//	for(auto &v2 : v){
-//			//		pdebug << v2 << endl;
-//			//	}
-//			//}
-//			if(!vvs.empty()){
-//				string password(vvs[0][0]);
-//				pdebug << password << endl;
-//				name_password[name] = password;
-//				pdebug << "name exist" << endl;
-//				string kvp_query("{query{name exist}}");
-//				send(client_socket, kvp_query.c_str(), kvp_query.length(), 0);
-//			} else {
-//				pdebug << "name not exist" << endl;
-//				string kvp_query("{query{name not exist}}");
-//				send(client_socket, kvp_query.c_str(), kvp_query.length(), 0);
-//			}
-//		} else if ("password" == p->sub->key) {
-//			string name = socket_name[client_socket];
-//			string password = p->sub->value;
-//			unordered_map<string, string>::iterator it;
-//			it = name_password.find(name);
-//			if (name_password.end() != it) {
-//				if (password == name_password[name]) {
-//					name_socket[name] = client_socket;
-//					for (auto &v : name_socket) {
-//						pdebug << v.first << " " << v.second << endl;
-//					}
-//					pdebug << "password correct" << endl;
-//					string kvp_query("{query{password correct}}");
-//					send(client_socket, kvp_query.c_str(), kvp_query.length(), 0);
-//				} else {
-//					pdebug << "password incorrect" << endl;
-//					string kvp_query("{query{password incorrect}}");
-//					send(client_socket, kvp_query.c_str(), kvp_query.length(), 0);
-//				}
-//			} else {
-//				string sql = "insert into user(name, password) values(\"" + name + "\", \"" + password + "\")";
-//				string data;
-//				if (my_query_int(sql)) {
-//					data = "{regist failed}";
-//					pdebug << "user insert failed" << endl;
-//				} else {
-//					sql = "create table " + name + "_relationship(id int unsigned not null auto_increment primary key, contact_id int unsigned not null)";
-//					if (my_query_int(sql)) {
-//						pdebug << "create relationship failed" << endl;
-//					} else {
-//						pdebug << "create relationship successed" << endl;
-//					}
-//					name_socket[name] = client_socket;
-//					data = "{regist success}";
-//					pdebug << "user insert success" << endl;
-//				}
-//				send(client_socket, data.c_str(), data.length(), 0);
-//			}
-//		}
-//	} else {
-//		pdebug << "other" << endl;
-//	}
-//}
+//消息队列
+unordered_map<unsigned int, queue<string>> id_mq;
 
 void parse(string &data, int client_socket){
 	rapidjson::Document doc;
@@ -146,6 +71,7 @@ void parse(string &data, int client_socket){
 			} else {
 				pdebug << "name exist" << endl;
 				socket_id[client_socket] = stoul(vvs[0][0]);
+				id_socket[socket_id[client_socket]] = client_socket;
 				string password = vvs[0][1];
 				name_password[name] = password;
 				writer.String("exist");
@@ -177,12 +103,40 @@ void parse(string &data, int client_socket){
 			send(client_socket, data_send.c_str(), data_send.length(), 0);
 		} 
 	} else if (doc.HasMember("query") && doc["query"].IsString() && doc["query"].GetString() == string("contacts")) {
-		string contacts_query = "select user.name from user, " + to_string(socket_id[client_socket]) + "_contacts where user.id=" + to_string(socket_id[client_socket]) + "_contacts.contacts_id";
+		string contacts_query = "select user.id, user.name from user, " + to_string(socket_id[client_socket]) + "_contacts where user.id=" + to_string(socket_id[client_socket]) + "_contacts.contacts_id";
 		vector<vector<string>> vvs(my_query(contacts_query));
 		rapidjson::StringBuffer sb;
 		rapidjson::Writer<rapidjson::StringBuffer> writer(sb);
 		writer.StartObject();
 		writer.Key("contacts list");
+		writer.StartArray();
+		//for (auto &v : vvs) {
+		//	for (auto &v2 : v) {
+		//		writer.String(v2.c_str());
+		//	}
+		//}
+		for (auto &v : vvs) {
+			//string id_str = v[0];
+			//string name = v[1];
+			writer.StartObject();
+			writer.Key("id");
+			writer.Int(stoul(v[0]));
+			writer.Key("name");
+			writer.String(v[1].c_str());
+			writer.EndObject();
+		}
+		writer.EndArray();
+		writer.EndObject();
+		string data(sb.GetString());
+		pdebug << data << endl;
+		send(client_socket, data.c_str(), data.length(), 0);
+	} else if (doc.HasMember("query") && doc["query"].IsString() && doc["query"].GetString() == string("group")) {
+		string sql = "select group_id from " + to_string(socket_id[client_socket]) + "_group";
+		vector<vector<string>> vvs(my_query(sql));
+		rapidjson::StringBuffer sb;
+		rapidjson::Writer<rapidjson::StringBuffer> writer(sb);
+		writer.StartObject();
+		writer.Key("group list");
 		writer.StartArray();
 		for (auto &v : vvs) {
 			for (auto &v2 : v) {
@@ -194,6 +148,11 @@ void parse(string &data, int client_socket){
 		string data(sb.GetString());
 		pdebug << data << endl;
 		send(client_socket, data.c_str(), data.length(), 0);
+		//for (auto &v : vvs) {
+		//	for (auto &v2 : v) {
+		//		pdebug << v2 << endl;
+		//	}
+		//}
 	} else if (doc.HasMember("regist") && doc["regist"].IsObject()) {
 		const rapidjson::Value &object = doc["regist"];
 		string name, password;
@@ -212,23 +171,25 @@ void parse(string &data, int client_socket){
 			writer.String("failed");
 			pdebug << "insert user failed" << endl;
 		} else {
+			writer.String("success");
+			pdebug << "insert user success" << endl;
 			string query_id = "select id from user where name=\"" + name + "\"";
 			socket_id[client_socket] = stoul(my_query(query_id)[0][0]);
+			id_socket[socket_id[client_socket]] = client_socket;
 			string create_contacts = "create table " + to_string(socket_id[client_socket]) + "_contacts(id int unsigned not null auto_increment primary key, contacts_id int unsigned not null)";
 			if (my_query_int(create_contacts)) {
 				pdebug << "create contacts failed" << endl;
 			} else {
 				pdebug << "create contacts success" << endl;
 			}
-			writer.String("success");
-			pdebug << "insert user success" << endl;
 		}
 		writer.EndObject();
 		string data = sb.GetString();
 		send(client_socket, data.c_str(), data.length(), 0);
 	} else if (doc.HasMember("send") && doc["send"].IsObject()) {
 		const rapidjson::Value &object = doc["send"];
-		string name(object["name"].GetString());
+		//string name(object["name"].GetString());
+		unsigned id = object["id"].GetUint();
 		string data_received(object["data"].GetString());
 		//可以修改json 还不会
 		rapidjson::StringBuffer sb;
@@ -236,15 +197,17 @@ void parse(string &data, int client_socket){
 		writer.StartObject();
 		writer.Key("send");
 		writer.StartObject();
-		writer.Key("name");
-		writer.String(socket_name[client_socket].c_str());
+		//writer.Key("name");
+		//writer.String(socket_name[client_socket].c_str());
+		writer.Key("id");
+		writer.Uint(socket_id[client_socket]);
 		writer.Key("data");
 		writer.String(data_received.c_str());
 		writer.EndObject();
 		writer.EndObject();
 		string data_send(sb.GetString());
 		pdebug << data_send << endl;
-		send(name_socket[name], data_send.c_str(), data_send.length(), 0);
+		send(id_socket[id], data_send.c_str(), data_send.length(), 0);
 	}
 }
 
@@ -258,12 +221,7 @@ void *client_thread(void *_client_socket){
 		}
 		string s(message);
 		pdebug << message << endl;
-		//KVP *p;
-		//parsing(s, p, client_socket);
 		parse(s,client_socket);
-		//if (p) {
-		//	delete p;
-		//}
 	}
 }
 
