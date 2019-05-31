@@ -40,10 +40,12 @@ unordered_map<string, string>name_password;
 //<端口,id>
 unordered_map<int, unsigned int>socket_id;
 //<id,端口>
+//多设备用map<id,vector<socket>>?
 unordered_map<unsigned int, int>id_socket;
 //聊天室 <房间号,socket_fd>
 unordered_map<string, unordered_set<int>> room;
 //消息队列
+//super simple version
 unordered_map<unsigned int, queue<string>> id_mq;
 
 void parse(string &data, int client_socket){
@@ -207,18 +209,51 @@ void parse(string &data, int client_socket){
 		writer.EndObject();
 		string data_send(sb.GetString());
 		pdebug << data_send << endl;
-		send(id_socket[id], data_send.c_str(), data_send.length(), 0);
+		//在线发送 离线入列
+		//做一个开关?
+		if (id_socket.count(id)) {
+			pdebug << "to send" << endl;
+			send(id_socket[id], data_send.c_str(), data_send.length(), 0);
+		} else {
+			pdebug << "to queue" << endl;
+			id_mq[id].push(data_send);
+		}
+		//send(id_socket[id], data_send.c_str(), data_send.length(), 0);
+	} else if (doc.HasMember("message") && doc["message"].IsString() && doc["message"].GetString() == string("please")) {
+		unsigned int id = socket_id[client_socket];
+		while (!id_mq[id].empty()) {
+			string data(id_mq[id].front());
+			id_mq[id].pop();
+			send(client_socket, data.c_str(), data.length(), 0);
+		}
 	}
 }
 
 void *client_thread(void *_client_socket){
-	char message[64] = {0};
+	char message[128] = {0};
 	int client_socket = *(int*)_client_socket;
 	while(1){
 		memset(message, 0, sizeof(message));
-		if(!recv(client_socket, message, sizeof(message), 0)){
+		int ret = recv(client_socket, message, sizeof(message), 0);
+		pdebug << "recv " << ret << endl;
+		if (0 == ret) {
+			//断开链接
+			if (0 == socket_id.count(client_socket)){
+				break;
+			}
+			int id = socket_id[client_socket];
+			id_socket.erase(id);
+			socket_id.erase(client_socket);
+			break;
+		} else if (-1 == ret) {
+			//id_socket.erase(id);
+			//socket_id.erase(client_socket);
+			pdebug << errno << endl;
 			break;
 		}
+		//if(!recv(client_socket, message, sizeof(message), 0)){
+		//	break;
+		//}
 		string s(message);
 		pdebug << message << endl;
 		parse(s,client_socket);
