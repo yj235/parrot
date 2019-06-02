@@ -29,6 +29,8 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 
+#define MAXSIZE 512
+
 using namespace std;
 
 //<用户名 端口> 用id? //有bug 登录
@@ -40,10 +42,12 @@ unordered_map<string, string>name_password;
 //<端口,id>
 unordered_map<int, unsigned int>socket_id;
 //<id,端口>
+//多设备用map<id,vector<socket>>?
 unordered_map<unsigned int, int>id_socket;
 //聊天室 <房间号,socket_fd>
 unordered_map<string, unordered_set<int>> room;
 //消息队列
+//super simple version
 unordered_map<unsigned int, queue<string>> id_mq;
 
 void parse(string &data, int client_socket){
@@ -188,43 +192,78 @@ void parse(string &data, int client_socket){
 		send(client_socket, data.c_str(), data.length(), 0);
 	} else if (doc.HasMember("send") && doc["send"].IsObject()) {
 		const rapidjson::Value &object = doc["send"];
-		//string name(object["name"].GetString());
 		unsigned id = object["id"].GetUint();
-		string data_received(object["data"].GetString());
+		string time(object["time"].GetString());
+		string message_received(object["message"].GetString());
 		//可以修改json 还不会
 		rapidjson::StringBuffer sb;
 		rapidjson::Writer<rapidjson::StringBuffer> writer(sb);
 		writer.StartObject();
 		writer.Key("send");
 		writer.StartObject();
-		//writer.Key("name");
-		//writer.String(socket_name[client_socket].c_str());
 		writer.Key("id");
 		writer.Uint(socket_id[client_socket]);
-		writer.Key("data");
-		writer.String(data_received.c_str());
+		writer.Key("time");
+		writer.String(time.c_str());
+		writer.Key("message");
+		writer.String(message_received.c_str());
 		writer.EndObject();
 		writer.EndObject();
-		string data_send(sb.GetString());
-		pdebug << data_send << endl;
-		send(id_socket[id], data_send.c_str(), data_send.length(), 0);
+		string message_send(sb.GetString());
+		pdebug << message_send << endl;
+		//在线发送 离线入列
+		//做一个开关?
+		if (id_socket.count(id)) {
+			pdebug << "to send" << endl;
+			send(id_socket[id], message_send.c_str(), message_send.length(), 0);
+		} else {
+			pdebug << "to queue" << endl;
+			id_mq[id].push(message_send);
+		}
+		//send(id_socket[id], data_send.c_str(), data_send.length(), 0);
+	} else if (doc.HasMember("message") && doc["message"].IsString() && doc["message"].GetString() == string("please")) {
+		unsigned int id = socket_id[client_socket];
+		while (!id_mq[id].empty()) {
+			string data(id_mq[id].front());
+			pdebug << "***" << data << "***" << endl;
+			id_mq[id].pop();
+			send(client_socket, data.c_str(), data.length(), 0);
+		}
 	}
 }
 
 void *client_thread(void *_client_socket){
-	char message[64] = {0};
+	char message[MAXSIZE] = {0};
 	int client_socket = *(int*)_client_socket;
 	while(1){
 		memset(message, 0, sizeof(message));
-		if(!recv(client_socket, message, sizeof(message), 0)){
+		int ret = recv(client_socket, message, sizeof(message), 0);
+		pdebug << "recv " << ret << endl;
+		int id = socket_id[client_socket];
+		if (0 == ret) {
+			//断开链接
+			if (0 == socket_id.count(client_socket)){
+				break;
+			}
+			id_socket.erase(id);
+			socket_id.erase(client_socket);
+			break;
+		} else if (-1 == ret) {
+			id_socket.erase(id);
+			socket_id.erase(client_socket);
+			pdebug << errno << endl;
 			break;
 		}
+		//if(!recv(client_socket, message, sizeof(message), 0)){
+		//	break;
+		//}
 		string s(message);
 		pdebug << message << endl;
 		parse(s,client_socket);
 	}
 }
 
+//要改
 void* server_thread(void* _client_socket){
 	string name;
 	string message;

@@ -29,6 +29,8 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 
+#define MAXSIZE 1024
+
 using namespace std;
 
 //<用户名 端口> 用id? //有bug 登录
@@ -40,11 +42,23 @@ unordered_map<string, string>name_password;
 //<端口,id>
 unordered_map<int, unsigned int>socket_id;
 //<id,端口>
+//多设备用map<id,vector<socket>>?
 unordered_map<unsigned int, int>id_socket;
 //聊天室 <房间号,socket_fd>
 unordered_map<string, unordered_set<int>> room;
 //消息队列
+//super simple version
 unordered_map<unsigned int, queue<string>> id_mq;
+
+void my_send(int socket, string &str){
+	//most stupid way to do this..
+	char data[1024];
+	memset(data, 0, sizeof(data));
+	unsigned int len = str.length();
+	memcpy(data, &len, sizeof(int));
+	memcpy(data + sizeof(len), str.c_str(), str.length());
+	send(socket, data, sizeof(len) + len, 0);
+}
 
 void parse(string &data, int client_socket){
 	rapidjson::Document doc;
@@ -79,7 +93,8 @@ void parse(string &data, int client_socket){
 			writer.EndObject();
 			writer.EndObject();
 			string data_send = sb.GetString();
-			send(client_socket, data_send.c_str(), data_send.length(), 0);
+			//send(client_socket, data_send.c_str(), data_send.length(), 0);
+			my_send(client_socket, data_send);
 
 		} else if (object.HasMember("password") && object["password"].IsString()) {
 			string password = object["password"].GetString();
@@ -100,7 +115,8 @@ void parse(string &data, int client_socket){
 			writer.EndObject();
 			writer.EndObject();
 			string data_send = sb.GetString();
-			send(client_socket, data_send.c_str(), data_send.length(), 0);
+			//send(client_socket, data_send.c_str(), data_send.length(), 0);
+			my_send(client_socket, data_send);
 		} 
 	} else if (doc.HasMember("query") && doc["query"].IsString() && doc["query"].GetString() == string("contacts")) {
 		string contacts_query = "select user.id, user.name from user, " + to_string(socket_id[client_socket]) + "_contacts where user.id=" + to_string(socket_id[client_socket]) + "_contacts.contacts_id";
@@ -129,7 +145,8 @@ void parse(string &data, int client_socket){
 		writer.EndObject();
 		string data(sb.GetString());
 		pdebug << data << endl;
-		send(client_socket, data.c_str(), data.length(), 0);
+		//send(client_socket, data.c_str(), data.length(), 0);
+		my_send(client_socket, data);
 	} else if (doc.HasMember("query") && doc["query"].IsString() && doc["query"].GetString() == string("group")) {
 		string sql = "select group_id from " + to_string(socket_id[client_socket]) + "_group";
 		vector<vector<string>> vvs(my_query(sql));
@@ -147,7 +164,8 @@ void parse(string &data, int client_socket){
 		writer.EndObject();
 		string data(sb.GetString());
 		pdebug << data << endl;
-		send(client_socket, data.c_str(), data.length(), 0);
+		//send(client_socket, data.c_str(), data.length(), 0);
+		my_send(client_socket, data);
 		//for (auto &v : vvs) {
 		//	for (auto &v2 : v) {
 		//		pdebug << v2 << endl;
@@ -185,46 +203,88 @@ void parse(string &data, int client_socket){
 		}
 		writer.EndObject();
 		string data = sb.GetString();
-		send(client_socket, data.c_str(), data.length(), 0);
+		//send(client_socket, data.c_str(), data.length(), 0);
+		my_send(client_socket, data);
 	} else if (doc.HasMember("send") && doc["send"].IsObject()) {
 		const rapidjson::Value &object = doc["send"];
-		//string name(object["name"].GetString());
 		unsigned id = object["id"].GetUint();
-		string data_received(object["data"].GetString());
+		string time(object["time"].GetString());
+		string message_received(object["message"].GetString());
 		//可以修改json 还不会
 		rapidjson::StringBuffer sb;
 		rapidjson::Writer<rapidjson::StringBuffer> writer(sb);
 		writer.StartObject();
 		writer.Key("send");
 		writer.StartObject();
-		//writer.Key("name");
-		//writer.String(socket_name[client_socket].c_str());
 		writer.Key("id");
 		writer.Uint(socket_id[client_socket]);
-		writer.Key("data");
-		writer.String(data_received.c_str());
+		writer.Key("time");
+		writer.String(time.c_str());
+		writer.Key("message");
+		writer.String(message_received.c_str());
 		writer.EndObject();
 		writer.EndObject();
 		string data_send(sb.GetString());
 		pdebug << data_send << endl;
-		send(id_socket[id], data_send.c_str(), data_send.length(), 0);
+		//在线发送 离线入列
+		//做一个开关?
+		if (id_socket.count(id)) {
+			pdebug << "to send" << endl;
+			//send(id_socket[id], data_send.c_str(), data_send.length(), 0);
+			my_send(id_socket[id], data_send);
+		} else {
+			pdebug << "to queue" << endl;
+			id_mq[id].push(data_send);
+		}
+		//send(id_socket[id], data_send.c_str(), data_send.length(), 0);
+	} else if (doc.HasMember("message") && doc["message"].IsString() && doc["message"].GetString() == string("please")) {
+		unsigned int id = socket_id[client_socket];
+		while (!id_mq[id].empty()) {
+			string data(id_mq[id].front());
+			pdebug << "***" << data << "***" << endl;
+			id_mq[id].pop();
+			//send(client_socket, data.c_str(), data.length(), 0);
+			my_send(client_socket, data);
+		}
 	}
 }
 
 void *client_thread(void *_client_socket){
-	char message[64] = {0};
+	char data[MAXSIZE];
 	int client_socket = *(int*)_client_socket;
+	unsigned int len = 0;
 	while(1){
-		memset(message, 0, sizeof(message));
-		if(!recv(client_socket, message, sizeof(message), 0)){
+		memset(data, 0, sizeof(data));
+		//int ret = recv(client_socket, data, sizeof(data), 0);
+		int ret = recv(client_socket, &len, sizeof(len), 0);
+		pdebug << len << endl;
+		int id = socket_id[client_socket];
+		if (0 == ret) {
+			//断开链接
+			if (0 == socket_id.count(client_socket)){
+				break;
+			}
+			id_socket.erase(id);
+			socket_id.erase(client_socket);
+			break;
+		} else if (-1 == ret) {
+			id_socket.erase(id);
+			socket_id.erase(client_socket);
+			pdebug << errno << endl;
 			break;
 		}
-		string s(message);
-		pdebug << message << endl;
+		//if(!recv(client_socket, message, sizeof(message), 0)){
+		//	break;
+		//}
+		ret = recv(client_socket, data, len, 0);
+		pdebug << "recv " << ret << endl;
+		string s(data);
+		pdebug << data << endl;
 		parse(s,client_socket);
 	}
 }
 
+//要改
 void* server_thread(void* _client_socket){
 	string name;
 	string message;
@@ -233,7 +293,8 @@ void* server_thread(void* _client_socket){
 		getline(cin, message);
 		//while(getchar() != '\n');
 		message.erase(0,1);
-		send(name_socket[name], message.c_str(), message.length(), 0);
+		//send(name_socket[name], message.c_str(), message.length(), 0);
+		my_send(name_socket[name], message);
 	}
 }
 

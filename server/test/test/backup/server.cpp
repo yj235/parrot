@@ -1,9 +1,12 @@
 #include "KVP.h"
 #include "format.h"
-#include "User.h"
+#include "user.h"
 #include "pdebug.h"
-
 #include "my_query.h"
+
+#include "rapidjson/document.h"
+#include "rapidjson/stringbuffer.h"
+#include "rapidjson/writer.h"
 
 #include <iostream>
 #include <string>
@@ -26,115 +29,262 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 
+#define MAXSIZE 1024
+
 using namespace std;
 
-//<用户名-端口> 用id?
+//<用户名 端口> 用id? //有bug 登录
 unordered_map<string, int>name_socket;
-//<端口-用户名> 用id?
+//<端口 用户名> 用id? //有bug 登录
 unordered_map<int, string>socket_name;
 //<用户名 密码>
 unordered_map<string, string>name_password;
+//<端口,id>
+unordered_map<int, unsigned int>socket_id;
+//<id,端口>
+//多设备用map<id,vector<socket>>?
+unordered_map<unsigned int, int>id_socket;
 //聊天室 <房间号,socket_fd>
 unordered_map<string, unordered_set<int>> room;
+//消息队列
+//super simple version
+unordered_map<unsigned int, queue<string>> id_mq;
 
-void parsing(string &s, KVP *&p, int client_socket){
-	analysis(s, p);
-	//if("login" == p->key ){
-	//	User u(p->sub->key, p->sub->value);
-	//	pdebug << u << endl;
-	//	string sql = "select id from user where name=\"" + u.name + "\" and password=\"" + u.password + "\"";
-	//	pdebug << sql << endl;
-	//	//string ret_sql = my_query(sql.c_str());
-	//	//string ret_sql = my_query(sql);
-	//	vector<vector<string>> vvs = my_query(sql);
-	//	if(!vvs.empty()){
-	//		pdebug << "successed" << endl;
-	//		pdebug << vvs[0][0] << endl;
-	//		name_socket.insert({u.name, client_socket});
-	//		for(auto &v: name_socket){
-	//			pdebug << v.first << " " << v.second << endl;
-	//		}
-	//		//send(client_socket, "1", 2, 0);
-	//		send(client_socket, "{login success}", strlen("{login success}"), 0);
-	//	} else {
-	//		pdebug << "failed" << endl;
-	//		//send(client_socket, "0", 2, 0);
-	//		send(client_socket, "{login failed}", strlen("{login failed}"), 0);
-	//	}
-	//} else 
-	if ("send" == p->key){
-		KVP *obj = p->sub;
-		pdebug << name_socket[obj->key] << endl;
-		string data = "{send{" + socket_name[client_socket] + " " + obj->value + "}}";
-		send(name_socket[obj->key], data.c_str(), data.length(), 0);
-	} else if ("room" == p->key){
-		room[p->sub->key].insert(client_socket);
-		string data = "{room{" + socket_name[client_socket] + " " + p->sub->value + "}}";
-		for(auto &v : room[p->sub->key]){
-			send(v, data.c_str(), data.length(), 0);
-		}
-	} else if ("query" == p->key){
-		if ("name" == p->sub->key) {
-			string name = p->sub->value;
-			string sql = "select password from user where name=\"" + name + "\"";
-			vector<vector<string>> vvs = my_query(sql);
-			//for(auto &v : vvs){
-			//	for(auto &v2 : v){
-			//		pdebug << v2 << endl;
-			//	}
-			//}
-			if(!vvs.empty()){
-				string password(vvs[0][0]);
-				pdebug << password << endl;
-				socket_name[client_socket] = name;
-				name_password[name] = password;
-				pdebug << "name exist" << endl;
-				string kvp_query("{query{name exist}}");
-				send(client_socket, kvp_query.c_str(), kvp_query.length(), 0);
-			} else {
+void my_send(int socket, string &str){
+	//most stupid way to do this..
+	char data[1024];
+	memset(data, 0, sizeof(data));
+	unsigned int len = str.length();
+	memcpy(data, &len, sizeof(int));
+	memcpy(data + sizeof(len), str.c_str(), str.length());
+	send(socket, data, sizeof(len) + len, 0);
+}
+
+void parse(string &data, int client_socket){
+	rapidjson::Document doc;
+	if (doc.Parse(data.data()).HasParseError()) {
+		cerr << "json parse error" << endl;
+		return;
+	}
+	if (doc.HasMember("query") && doc["query"].IsObject()) {
+		const rapidjson::Value &object = doc["query"];
+		if (object.HasMember("name") && object["name"].IsString()) {
+			string name = object["name"].GetString();
+			socket_name[client_socket] = name;
+			rapidjson::StringBuffer sb;
+			rapidjson::Writer<rapidjson::StringBuffer> writer(sb);
+			writer.StartObject();
+			writer.Key("query");
+			writer.StartObject();
+			writer.Key("name");
+			string sql = "select id, password from user where name=\"" + name + "\"";
+			vector<vector<string>> vvs;
+			if ((vvs = my_query(sql)).empty()) {
 				pdebug << "name not exist" << endl;
-				string kvp_query("{query{name not exist}}");
-				send(client_socket, kvp_query.c_str(), kvp_query.length(), 0);
+				writer.String("not exist");
+			} else {
+				pdebug << "name exist" << endl;
+				socket_id[client_socket] = stoul(vvs[0][0]);
+				id_socket[socket_id[client_socket]] = client_socket;
+				string password = vvs[0][1];
+				name_password[name] = password;
+				writer.String("exist");
 			}
-		} else if ("password" == p->sub->key) {
-			string password = p->sub->value;
-			if (password == name_password[socket_name[client_socket]]) {
+			writer.EndObject();
+			writer.EndObject();
+			string data_send = sb.GetString();
+			//send(client_socket, data_send.c_str(), data_send.length(), 0);
+			my_send(client_socket, data_send);
+
+		} else if (object.HasMember("password") && object["password"].IsString()) {
+			string password = object["password"].GetString();
+			rapidjson::StringBuffer sb;
+			rapidjson::Writer<rapidjson::StringBuffer> writer(sb);
+			writer.StartObject();
+			writer.Key("query");
+			writer.StartObject();
+			writer.Key("password");
+			if (name_password[(socket_name[client_socket])] == password) {
 				name_socket[socket_name[client_socket]] = client_socket;
-				for (auto &v : name_socket) {
-					pdebug << v.first << " " << v.second << endl;
-				}
 				pdebug << "password correct" << endl;
-				string kvp_query("{query{password correct}}");
-				send(client_socket, kvp_query.c_str(), kvp_query.length(), 0);
+				writer.String("correct");
 			} else {
 				pdebug << "password incorrect" << endl;
-				string kvp_query("{query{password incorrect}}");
-				send(client_socket, kvp_query.c_str(), kvp_query.length(), 0);
+				writer.String("incorrect");
+			}
+			writer.EndObject();
+			writer.EndObject();
+			string data_send = sb.GetString();
+			//send(client_socket, data_send.c_str(), data_send.length(), 0);
+			my_send(client_socket, data_send);
+		} 
+	} else if (doc.HasMember("query") && doc["query"].IsString() && doc["query"].GetString() == string("contacts")) {
+		string contacts_query = "select user.id, user.name from user, " + to_string(socket_id[client_socket]) + "_contacts where user.id=" + to_string(socket_id[client_socket]) + "_contacts.contacts_id";
+		vector<vector<string>> vvs(my_query(contacts_query));
+		rapidjson::StringBuffer sb;
+		rapidjson::Writer<rapidjson::StringBuffer> writer(sb);
+		writer.StartObject();
+		writer.Key("contacts list");
+		writer.StartArray();
+		//for (auto &v : vvs) {
+		//	for (auto &v2 : v) {
+		//		writer.String(v2.c_str());
+		//	}
+		//}
+		for (auto &v : vvs) {
+			//string id_str = v[0];
+			//string name = v[1];
+			writer.StartObject();
+			writer.Key("id");
+			writer.Int(stoul(v[0]));
+			writer.Key("name");
+			writer.String(v[1].c_str());
+			writer.EndObject();
+		}
+		writer.EndArray();
+		writer.EndObject();
+		string data(sb.GetString());
+		pdebug << data << endl;
+		//send(client_socket, data.c_str(), data.length(), 0);
+		my_send(client_socket, data);
+	} else if (doc.HasMember("query") && doc["query"].IsString() && doc["query"].GetString() == string("group")) {
+		string sql = "select group_id from " + to_string(socket_id[client_socket]) + "_group";
+		vector<vector<string>> vvs(my_query(sql));
+		rapidjson::StringBuffer sb;
+		rapidjson::Writer<rapidjson::StringBuffer> writer(sb);
+		writer.StartObject();
+		writer.Key("group list");
+		writer.StartArray();
+		for (auto &v : vvs) {
+			for (auto &v2 : v) {
+				writer.String(v2.c_str());
 			}
 		}
-	} else {
-		pdebug << "other" << endl;
+		writer.EndArray();
+		writer.EndObject();
+		string data(sb.GetString());
+		pdebug << data << endl;
+		//send(client_socket, data.c_str(), data.length(), 0);
+		my_send(client_socket, data);
+		//for (auto &v : vvs) {
+		//	for (auto &v2 : v) {
+		//		pdebug << v2 << endl;
+		//	}
+		//}
+	} else if (doc.HasMember("regist") && doc["regist"].IsObject()) {
+		const rapidjson::Value &object = doc["regist"];
+		string name, password;
+		if (object.HasMember("name") && object["name"].IsString()) {
+			name = object["name"].GetString();
+		}
+		if (object.HasMember("password") && object["password"].IsString()) {
+			password = object["password"].GetString();
+		}
+		string sql = "insert into user(name, password) values(\"" + name + "\", \"" + password + "\")";
+		rapidjson::StringBuffer sb;
+		rapidjson::Writer<rapidjson::StringBuffer> writer(sb);
+		writer.StartObject();
+		writer.Key("regist");
+		if (my_query_int(sql)) {
+			writer.String("failed");
+			pdebug << "insert user failed" << endl;
+		} else {
+			writer.String("success");
+			pdebug << "insert user success" << endl;
+			string query_id = "select id from user where name=\"" + name + "\"";
+			socket_id[client_socket] = stoul(my_query(query_id)[0][0]);
+			id_socket[socket_id[client_socket]] = client_socket;
+			string create_contacts = "create table " + to_string(socket_id[client_socket]) + "_contacts(id int unsigned not null auto_increment primary key, contacts_id int unsigned not null)";
+			if (my_query_int(create_contacts)) {
+				pdebug << "create contacts failed" << endl;
+			} else {
+				pdebug << "create contacts success" << endl;
+			}
+		}
+		writer.EndObject();
+		string data = sb.GetString();
+		//send(client_socket, data.c_str(), data.length(), 0);
+		my_send(client_socket, data);
+	} else if (doc.HasMember("send") && doc["send"].IsObject()) {
+		const rapidjson::Value &object = doc["send"];
+		unsigned id = object["id"].GetUint();
+		string time(object["time"].GetString());
+		string message_received(object["message"].GetString());
+		//可以修改json 还不会
+		rapidjson::StringBuffer sb;
+		rapidjson::Writer<rapidjson::StringBuffer> writer(sb);
+		writer.StartObject();
+		writer.Key("send");
+		writer.StartObject();
+		writer.Key("id");
+		writer.Uint(socket_id[client_socket]);
+		writer.Key("time");
+		writer.String(time.c_str());
+		writer.Key("message");
+		writer.String(message_received.c_str());
+		writer.EndObject();
+		writer.EndObject();
+		string data_send(sb.GetString());
+		pdebug << data_send << endl;
+		//在线发送 离线入列
+		//做一个开关?
+		if (id_socket.count(id)) {
+			pdebug << "to send" << endl;
+			//send(id_socket[id], data_send.c_str(), data_send.length(), 0);
+			my_send(id_socket[id], data_send);
+		} else {
+			pdebug << "to queue" << endl;
+			id_mq[id].push(data_send);
+		}
+		//send(id_socket[id], data_send.c_str(), data_send.length(), 0);
+	} else if (doc.HasMember("message") && doc["message"].IsString() && doc["message"].GetString() == string("please")) {
+		unsigned int id = socket_id[client_socket];
+		while (!id_mq[id].empty()) {
+			string data(id_mq[id].front());
+			pdebug << "***" << data << "***" << endl;
+			id_mq[id].pop();
+			//send(client_socket, data.c_str(), data.length(), 0);
+			my_send(client_socket, data);
+		}
 	}
 }
 
 void *client_thread(void *_client_socket){
-	char message[64] = {0};
+	char data[MAXSIZE];
 	int client_socket = *(int*)_client_socket;
+	unsigned int len = 0;
 	while(1){
-		memset(message, 0, sizeof(message));
-		if(!recv(client_socket, message, sizeof(message), 0)){
+		memset(data, 0, sizeof(data));
+		//int ret = recv(client_socket, data, sizeof(data), 0);
+		int ret = recv(client_socket, &len, sizeof(len), 0);
+		pdebug << len << endl;
+		int id = socket_id[client_socket];
+		if (0 == ret) {
+			//断开链接
+			if (0 == socket_id.count(client_socket)){
+				break;
+			}
+			id_socket.erase(id);
+			socket_id.erase(client_socket);
+			break;
+		} else if (-1 == ret) {
+			id_socket.erase(id);
+			socket_id.erase(client_socket);
+			pdebug << errno << endl;
 			break;
 		}
-		string s(message);
-		pdebug << message << endl;
-		KVP *p;
-		parsing(s, p, client_socket);
-		if (p) {
-			delete p;
-		}
+		//if(!recv(client_socket, message, sizeof(message), 0)){
+		//	break;
+		//}
+		ret = recv(client_socket, data, len, 0);
+		pdebug << "recv " << ret << endl;
+		string s(data);
+		pdebug << data << endl;
+		parse(s,client_socket);
 	}
 }
 
+//要改
 void* server_thread(void* _client_socket){
 	string name;
 	string message;
@@ -143,7 +293,8 @@ void* server_thread(void* _client_socket){
 		getline(cin, message);
 		//while(getchar() != '\n');
 		message.erase(0,1);
-		send(name_socket[name], message.c_str(), message.length(), 0);
+		//send(name_socket[name], message.c_str(), message.length(), 0);
+		my_send(name_socket[name], message);
 	}
 }
 
