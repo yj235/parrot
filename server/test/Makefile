@@ -1,4 +1,4 @@
-predir = ../../
+predir = ../
 
 user.h = $(predir)../user/include/
 user.cpp = $(predir)../user/src/user.cpp

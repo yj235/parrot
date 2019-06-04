@@ -22,6 +22,7 @@ vector<vector<string>> my_query(const string &s){
 	if(mysql_query(conn, p)){
 		fprintf(stderr, "%u %s\n", mysql_errno(conn), mysql_error(conn));
 		//return "";
+		return vvs;
 	}
 	MYSQL_RES *result = mysql_store_result(conn);
 	int num_fields = mysql_num_fields(result);
@@ -73,9 +74,8 @@ char *my_query_2(const char *p){
 int my_query_int(const string &sql){
 	MYSQL *conn = mysql_init(NULL);
 	mysql_real_connect(conn, "localhost", "yj", "a", "yj_db", 0, NULL, 0);
-	int ret = -1;
 	//const char *p = sql.c_str();
-	ret = mysql_query(conn, sql.c_str());
+	int ret = mysql_query(conn, sql.c_str());
 	mysql_close(conn);
 	return ret;
 }
