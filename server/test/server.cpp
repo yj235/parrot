@@ -16,6 +16,7 @@
 #include <unordered_set>
 #include <utility>
 #include <queue>
+#include <deque>
 
 #include <stdio.h>
 #include <unistd.h>
@@ -46,9 +47,15 @@ unordered_map<int, unsigned int>socket_id;
 unordered_map<unsigned int, int>id_socket;
 //聊天室 <房间号,socket_fd>
 unordered_map<string, unordered_set<int>> room;
-//消息队列
+//联系人消息队列
 //super simple version
-unordered_map<unsigned int, queue<string>> id_mq;
+unordered_map<unsigned int, queue<string>> contacts_mq;
+//群号 成员map
+unordered_map<unsigned int, unordered_set<unsigned int>> groupID_memberID;
+//群消息队列 group_id
+unordered_map<unsigned int, deque<string>> group_mq;
+//用户未读群消息数
+unordered_map<unsigned int, unordered_map<unsigned int, unsigned int>> userID_groupID_num;
 
 //互加联系人
 //***事务回滚***没做
@@ -259,7 +266,24 @@ void send(int client_socket, const rapidjson::Value &object){
 		my_send(id_socket[id], data_send);
 	} else {
 		pdebug << "to queue" << endl;
-		id_mq[id].push(data_send);
+		contacts_mq[id].push(data_send);
+	}
+}
+
+void send_group(int client_socket, const rapidjson::Value &object, string &data){
+	unsigned group_id = object["group id"].GetUint();
+	unsigned int user_id = object["user id"].GetUint();
+	//string time = object["time"].GetString();
+	//string message = object["time"].GetString();
+	group_mq[group_id].push_back(data);
+	for (auto &v : groupID_memberID[group_id]) {
+		//若不在线 用户->群->消息计数+1;
+		if (id_socket.find(v) == id_socket.end()) {
+			++userID_groupID_num[user_id][group_id];
+		} else {
+			//若在线 直接发送
+			my_send(id_socket[v], data);
+		}
 	}
 }
 
@@ -334,6 +358,19 @@ void query_groupMember(int client_socket, rapidjson::Document &doc){
 	my_send(client_socket, data);
 }
 
+void query_id(int client_socket){
+	rapidjson::StringBuffer sb;
+	rapidjson::Writer<rapidjson::StringBuffer> writer(sb);
+	writer.StartObject();
+	writer.Key("query");
+	writer.String("id");
+	writer.Key("id");
+	writer.Uint(socket_id[client_socket]);
+	writer.EndObject();
+	string data(sb.GetString());
+	my_send(client_socket, data);
+}
+
 void parse(string &data, int client_socket){
 	rapidjson::Document doc;
 	if (doc.Parse(data.data()).HasParseError()) {
@@ -359,9 +396,9 @@ void parse(string &data, int client_socket){
 		send(client_socket, object);
 	} else if (doc.HasMember("message") && doc["message"].IsString() && doc["message"].GetString() == string("please")) {
 		unsigned int id = socket_id[client_socket];
-		while (!id_mq[id].empty()) {
-			string data(id_mq[id].front());
-			id_mq[id].pop();
+		while (!contacts_mq[id].empty()) {
+			string data(contacts_mq[id].front());
+			contacts_mq[id].pop();
 			my_send(client_socket, data);
 		}
 	} else if (doc.HasMember("search") && doc["search"].IsString() && doc["search"].GetString() == string("contacts")) {
@@ -370,6 +407,11 @@ void parse(string &data, int client_socket){
 		search_group(client_socket, doc);
 	} else if (doc.HasMember("query") && doc["query"].IsString() && doc["query"].GetString() == string("group member")) {
 		query_groupMember(client_socket, doc);
+	} else if (doc.HasMember("send group") && doc["send group"].IsObject()) {
+		rapidjson::Value &object = doc["send group"];
+		send_group(client_socket, object, data);
+	} else if (doc["query"].GetString() == string("id")) {
+		query_id(client_socket);
 	}
 }
 
@@ -407,6 +449,22 @@ void *client_thread(void *_client_socket){
 	}
 }
 
+//初始化
+//群
+void init(void){
+	string sql_group_id = "select id from groups";
+	vector<vector<string>> vvs(my_query(sql_group_id));
+	for (auto &v : vvs) {
+		unsigned int group_id = atol(v[0].c_str());
+		string sql_user_id = "select user_id from group_" + v[0];
+		vector<vector<string>> vvs2(my_query(sql_user_id));
+		for (auto &v2 : vvs2) {
+			unsigned int user_id = atol(v2[0].c_str());
+			groupID_memberID[group_id].insert(user_id);
+		}
+	}
+}
+
 //要改
 void* server_thread(void* _client_socket){
 	string name;
@@ -422,6 +480,7 @@ void* server_thread(void* _client_socket){
 }
 
 int main(){
+	init();
 	unsigned short port = 8080;
 	struct sockaddr_in server_sockaddr;
 
