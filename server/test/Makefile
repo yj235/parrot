@@ -1,7 +1,7 @@
 predir = ../
 
-user.h = $(predir)../user/include/
-user.cpp = $(predir)../user/src/user.cpp
+user.h = $(predir)../user/include/test/
+user.cpp = $(predir)../user/src/test/user.cpp
 
 KVP.h = $(predir)../data_transmission/include/test/
 KVP.cpp = $(predir)../data_transmission/src/test/KVP.cpp

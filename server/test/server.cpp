@@ -35,27 +35,42 @@
 using namespace std;
 
 //<用户名 端口> 用id? //有bug 登录
-unordered_map<string, int>name_socket;
+//unordered_map<string, int>name_socket;
 //<端口 用户名> 用id? //有bug 登录
-unordered_map<int, string>socket_name;
-//<用户名 密码>
-unordered_map<string, string>name_password;
+//unordered_map<int, string>socket_name;
+//<id 密码>
+unordered_map<unsigned int, string>id_password;
 //<端口,id>
 unordered_map<int, unsigned int>socket_id;
 //<id,端口>
-//多设备用map<id,vector<socket>>?
+//多设备用map<id,unordered_set<socket>>?
 unordered_map<unsigned int, int>id_socket;
-//聊天室 <房间号,socket_fd>
-unordered_map<string, unordered_set<int>> room;
+
 //联系人消息队列
 //super simple version
 unordered_map<unsigned int, queue<string>> contacts_mq;
+//id-联系人-消息队列
+unordered_map<unsigned int, unordered_map<unsigned int, queue<string>>> id_contacts_mq;
+
 //群号 成员map
 unordered_map<unsigned int, unordered_set<unsigned int>> groupID_memberID;
 //群消息队列 group_id
 unordered_map<unsigned int, deque<string>> group_mq;
 //用户未读群消息数
 unordered_map<unsigned int, unordered_map<unsigned int, unsigned int>> userID_groupID_num;
+
+//用户集合
+//unordered_set<User> users;
+
+//联系人 群 对话窗口状态
+//默认初始化为false吗?
+typedef struct contacts_group_status{
+	unordered_map<unsigned int, bool> contacts_status;
+	unordered_map<unsigned int, bool> group_status;
+}contacts_group_status;
+
+//<id contacts_groups_status>
+unordered_map<unsigned int, contacts_group_status> id_cgs;
 
 //互加联系人
 //***事务回滚***没做
@@ -93,6 +108,7 @@ int add_group_to_list(int client_socket, unsigned int group_id){
 		pdebug << "insert into " + to_string(group_id) + "_group failed";
 		return -1;
 	}
+	groupID_memberID[group_id].insert(user_id);
 	return 0;
 }
 
@@ -107,8 +123,9 @@ void my_send(int socket, string &str){
 }
 
 void query_name(int client_socket, const rapidjson::Value &object) {
+	//void query_name(int client_socket, const rapidjson::Document &doc) {
 	string name = object["name"].GetString();
-	socket_name[client_socket] = name;
+	//string name = doc["query name"].GetString();
 	rapidjson::StringBuffer sb;
 	rapidjson::Writer<rapidjson::StringBuffer> writer(sb);
 	writer.StartObject();
@@ -116,17 +133,23 @@ void query_name(int client_socket, const rapidjson::Value &object) {
 	writer.StartObject();
 	writer.Key("name");
 	string sql = "select id, password from user where name=\"" + name + "\"";
-	vector<vector<string>> vvs;
-	if ((vvs = my_query(sql)).empty()) {
-		pdebug << "name not exist" << endl;
-		writer.String("not exist");
+	vector<vector<string>> vvs(my_query(sql));
+	if (vvs.empty()) {
+		//pdebug << "name not exist" << endl;
+		//writer.String("not exist");
+		writer.Null();
 	} else {
-		pdebug << "name exist" << endl;
-		socket_id[client_socket] = stoul(vvs[0][0]);
-		id_socket[socket_id[client_socket]] = client_socket;
+		//pdebug << "name exist" << endl;
+		unsigned int id = atoi(vvs[0][0].c_str());
+		socket_id[client_socket] = id;
+		id_socket[id] = client_socket;
 		string password = vvs[0][1];
-		name_password[name] = password;
-		writer.String("exist");
+		id_password[id] = password;
+		//writer.String("exist");
+		writer.Uint(id);
+
+		//User user(id, name, password);
+		//users.insert(user);
 	}
 	writer.EndObject();
 	writer.EndObject();
@@ -142,12 +165,12 @@ void query_password(int client_socket, const rapidjson::Value &object){
 	writer.Key("query");
 	writer.StartObject();
 	writer.Key("password");
-	if (name_password[(socket_name[client_socket])] == password) {
-		name_socket[socket_name[client_socket]] = client_socket;
-		pdebug << "password correct" << endl;
+	if (id_password[socket_id[client_socket]] == password) {
+		//name_socket[socket_name[client_socket]] = client_socket;
+		//pdebug << "password correct" << endl;
 		writer.String("correct");
 	} else {
-		pdebug << "password incorrect" << endl;
+		//pdebug << "password incorrect" << endl;
 		writer.String("incorrect");
 	}
 	writer.EndObject();
@@ -176,7 +199,7 @@ void query_contacts(int client_socket) {
 	writer.EndArray();
 	writer.EndObject();
 	string data(sb.GetString());
-	pdebug << data << endl;
+	//pdebug << data << endl;
 	my_send(client_socket, data);
 }
 
@@ -200,7 +223,7 @@ void query_group(int client_socket){
 	writer.EndArray();
 	writer.EndObject();
 	string data(sb.GetString());
-	pdebug << data << endl;
+	//pdebug << data << endl;
 	my_send(client_socket, data);
 }
 
@@ -230,6 +253,7 @@ void regist(int client_socket, const rapidjson::Value &object){
 			pdebug << "create contacts failed" << endl;
 		}
 		string create_group = "create table " + to_string(socket_id[client_socket]) + "_group(id int unsigned not null auto_increment primary key, group_id int unsigned not null)";
+
 		if (my_query_int(create_group)) {
 			pdebug << "create " + to_string(socket_id[client_socket]) + "_group failed";
 		}
@@ -240,7 +264,7 @@ void regist(int client_socket, const rapidjson::Value &object){
 }
 
 void send(int client_socket, const rapidjson::Value &object){
-	unsigned id = object["id"].GetUint();
+	unsigned target_id = object["id"].GetUint();
 	string time(object["time"].GetString());
 	string message_received(object["message"].GetString());
 	//可以修改json 还不会
@@ -250,39 +274,40 @@ void send(int client_socket, const rapidjson::Value &object){
 	writer.Key("send");
 	writer.StartObject();
 	writer.Key("id");
-	writer.Uint(socket_id[client_socket]);
+	unsigned int source_id = socket_id[client_socket];
+	writer.Uint(source_id);
 	writer.Key("time");
 	writer.String(time.c_str());
 	writer.Key("message");
 	writer.String(message_received.c_str());
 	writer.EndObject();
 	writer.EndObject();
-	string data_send(sb.GetString());
-	pdebug << data_send << endl;
-	//在线发送 离线入列
+	string data(sb.GetString());
+	pdebug << data << endl;
+	//v1 在线发送 离线入列
+	//v2 改为客户端打开联系人窗口发送 否则入列 ing...
 	//做一个开关?
-	if (id_socket.count(id)) {
+	if (id_socket.count(target_id) && id_cgs[target_id].contacts_status[source_id]) {
 		pdebug << "to send" << endl;
-		my_send(id_socket[id], data_send);
+		my_send(id_socket[target_id], data);
 	} else {
 		pdebug << "to queue" << endl;
-		contacts_mq[id].push(data_send);
+		//contacts_mq[target_id].push(data_send);
+		id_contacts_mq[target_id][source_id].push(data);
 	}
 }
 
 void send_group(int client_socket, const rapidjson::Value &object, string &data){
-	unsigned group_id = object["group id"].GetUint();
+	unsigned int group_id = object["group id"].GetUint();
 	unsigned int user_id = object["user id"].GetUint();
-	//string time = object["time"].GetString();
-	//string message = object["time"].GetString();
 	group_mq[group_id].push_back(data);
 	for (auto &v : groupID_memberID[group_id]) {
-		//若不在线 用户->群->消息计数+1;
-		if (id_socket.find(v) == id_socket.end()) {
-			++userID_groupID_num[user_id][group_id];
-		} else {
-			//若在线 直接发送
+		if (id_socket.find(v) != id_socket.end() && id_cgs[v].group_status[group_id]) {
+			//pdebug << "send" << endl;
 			my_send(id_socket[v], data);
+		} else {
+			//pdebug << "++" << endl;
+			++userID_groupID_num[v][group_id];
 		}
 	}
 }
@@ -308,9 +333,35 @@ void search_contacts(int client_socket, const rapidjson::Document &doc){
 	my_send(client_socket, data);
 }
 
+void new_member(unsigned int group_id, unsigned int id){
+	string query_name = "select name from user where id=" + to_string(id);
+	vector<vector<string>> vvs(my_query(query_name));
+	string name(vvs[0][0]);
+	rapidjson::StringBuffer sb;
+	rapidjson::Writer<rapidjson::StringBuffer> writer(sb);
+	writer.StartObject();
+	writer.Key("new member");
+	writer.StartObject();
+	writer.Key("group id");
+	writer.Uint(group_id);
+	writer.Key("id");
+	writer.Uint(id);
+	writer.Key("name");
+	writer.String(name.c_str());
+	writer.EndObject();
+	writer.EndObject();
+	string data(sb.GetString());
+	for (auto &v : groupID_memberID[group_id]) {
+		if (id_socket.find(v) != id_socket.end() && id_cgs[v].group_status[group_id]) {
+			my_send(id_socket[v], data);
+		}
+	}
+}
+
 void search_group(int client_socket, const rapidjson::Document &doc){
 	unsigned int id = doc["id"].GetUint();
-	string sql = "select name from groups where id=" + to_string(id);
+	unsigned int group_id = doc["group id"].GetUint();
+	string sql = "select name from groups where id=" + to_string(group_id);
 	rapidjson::StringBuffer sb;
 	rapidjson::Writer<rapidjson::StringBuffer> writer(sb);
 	writer.StartObject();
@@ -322,11 +373,14 @@ void search_group(int client_socket, const rapidjson::Document &doc){
 		writer.String("not exist");
 	} else {
 		writer.String(vvs[0][0].c_str());
-		add_group_to_list(client_socket, id);
+		add_group_to_list(client_socket, group_id);
 	}
 	writer.EndObject();
 	string data(sb.GetString());
 	my_send(client_socket, data);
+
+	//发送添加新成员消息
+	new_member(group_id, id);
 }
 
 void query_groupMember(int client_socket, rapidjson::Document &doc){
@@ -354,7 +408,7 @@ void query_groupMember(int client_socket, rapidjson::Document &doc){
 	writer.EndObject();
 	writer.EndObject();
 	string data(sb.GetString());
-	pdebug << data << endl;
+	//pdebug << data << endl;
 	my_send(client_socket, data);
 }
 
@@ -362,28 +416,117 @@ void query_id(int client_socket){
 	rapidjson::StringBuffer sb;
 	rapidjson::Writer<rapidjson::StringBuffer> writer(sb);
 	writer.StartObject();
-	writer.Key("query");
-	writer.String("id");
-	writer.Key("id");
+	writer.Key("query id");
+	//writer.String("id");
+	//writer.Key("id");
 	writer.Uint(socket_id[client_socket]);
 	writer.EndObject();
 	string data(sb.GetString());
 	my_send(client_socket, data);
 }
 
-void parse(string &data, int client_socket){
+void contacts_window_open(int client_socket, const rapidjson::Value &object) {
+	unsigned int id = object["id"].GetUint();
+	unsigned int contacts_id = object["contacts_id"].GetUint();
+	id_cgs[id].contacts_status[contacts_id] = true;
+	while (!id_contacts_mq[id][contacts_id].empty()) {
+		string data(id_contacts_mq[id][contacts_id].front());
+		my_send(client_socket, data);
+		id_contacts_mq[id][contacts_id].pop();
+	}
+}
+
+void contacts_window_close(int client_socket, const rapidjson::Value &object){
+	unsigned int id = object["id"].GetUint();
+	unsigned int contacts_id = object["contacts_id"].GetUint();
+	id_cgs[id].contacts_status[contacts_id] = false;
+}
+
+void group_window_open(int client_socket, const rapidjson::Value &object) {
+	unsigned int id = object["id"].GetUint();
+	unsigned int group_id = object["group_id"].GetUint();
+	id_cgs[id].group_status[group_id] = true;
+	auto end = group_mq[group_id].end();
+	pdebug << userID_groupID_num[id][group_id] << endl;
+	auto index = end - userID_groupID_num[id][group_id];
+	userID_groupID_num[id][group_id] = 0;
+	for (; index != end; ++index) {
+		my_send(client_socket, *index);
+	}
+}
+
+void group_window_close(int client_socket, const rapidjson::Value &object){
+	unsigned int id = object["id"].GetUint();
+	unsigned int group_id = object["group_id"].GetUint();
+	id_cgs[id].group_status[group_id] = false;
+}
+
+int create_group(int client_socket, const rapidjson::Value &object){
+	unsigned int id = object["id"].GetUint();
+	string name(object["name"].GetString());
+	string insert_groups = "INSERT INTO groups(name) VALUES(\"" + name + "\")";
+	if (my_query_int(insert_groups)) {
+		pdebug << "insert into groups failed" << endl;
+		return -1;
+	}
+	string query_id = "select id from groups where name=\"" + name + "\"";
+	vector<vector<string>> vvs(my_query(query_id));
+	unsigned int group_id = atoi(vvs[0][0].c_str());
+	string create_group = "CREATE TABLE group_" + vvs[0][0] + " (id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY, user_id INT UNSIGNED NOT NULL)";
+	if (my_query_int(create_group)) {
+		pdebug << "create group_id failed" << endl;
+	}
+	string insert_user = "INSERT INTO group_" + vvs[0][0] + "(user_id) VALUES(" + to_string(id) + ")";
+	my_query_int(insert_user);
+	string insert_group = "INSERT INTO " + to_string(id) + "_group(group_id) VALUES(" + vvs[0][0] + ")";
+	my_query_int(insert_group);
+	groupID_memberID[group_id].insert(id);
+	rapidjson::StringBuffer sb;
+	rapidjson::Writer<rapidjson::StringBuffer> writer(sb);
+	writer.StartObject();
+	writer.Key("create group");
+	writer.StartObject();
+	writer.Key("group id");
+	writer.Uint(group_id);
+	writer.Key("group name");
+	writer.String(name.c_str());
+	writer.EndObject();
+	writer.EndObject();
+	string data(sb.GetString());
+	my_send(client_socket, data);
+}
+
+void parse(int client_socket, string &data){
 	rapidjson::Document doc;
 	if (doc.Parse(data.data()).HasParseError()) {
 		cerr << "json parse error" << endl;
 		return;
 	}
-	if (doc.HasMember("query") && doc["query"].IsObject()) {
-		const rapidjson::Value &object = doc["query"];
-		if (object.HasMember("name") && object["name"].IsString()) {
-			query_name(client_socket, object);
-		} else if (object.HasMember("password") && object["password"].IsString()) {
-			query_password(client_socket, object);
-		} 
+	if (doc.HasMember("query name")) {
+		const rapidjson::Value &object = doc["query name"];
+		query_name(client_socket, object);
+
+	} else if (doc.HasMember("create group")) {
+		const rapidjson::Value &object = doc["create group"];
+		create_group(client_socket, object);
+
+	} else if (doc.HasMember("contacts window open")) {
+		const rapidjson::Value &object = doc["contacts window open"];
+		contacts_window_open(client_socket, object);
+	} else if (doc.HasMember("contacts window close")) {
+		const rapidjson::Value &object = doc["contacts window close"];
+		contacts_window_close(client_socket, object);
+
+	} else if (doc.HasMember("group window open")) {
+		const rapidjson::Value &object = doc["group window open"];
+		group_window_open(client_socket, object);
+	} else if (doc.HasMember("group window close")) {
+		const rapidjson::Value &object = doc["group window close"];
+		group_window_close(client_socket, object);
+
+	} else if (doc.HasMember("query password")) {
+		const rapidjson::Value &object = doc["query password"];
+		query_password(client_socket, object);
 	} else if (doc.HasMember("query") && doc["query"].IsString() && doc["query"].GetString() == string("contacts")) {
 		query_contacts(client_socket);
 	} else if (doc.HasMember("query") && doc["query"].IsString() && doc["query"].GetString() == string("group")) {
@@ -394,13 +537,6 @@ void parse(string &data, int client_socket){
 	} else if (doc.HasMember("send") && doc["send"].IsObject()) {
 		const rapidjson::Value &object = doc["send"];
 		send(client_socket, object);
-	} else if (doc.HasMember("message") && doc["message"].IsString() && doc["message"].GetString() == string("please")) {
-		unsigned int id = socket_id[client_socket];
-		while (!contacts_mq[id].empty()) {
-			string data(contacts_mq[id].front());
-			contacts_mq[id].pop();
-			my_send(client_socket, data);
-		}
 	} else if (doc.HasMember("search") && doc["search"].IsString() && doc["search"].GetString() == string("contacts")) {
 		search_contacts(client_socket, doc);
 	} else if (doc.HasMember("search") && doc["search"].IsString() && doc["search"].GetString() == string("group")) {
@@ -412,6 +548,11 @@ void parse(string &data, int client_socket){
 		send_group(client_socket, object, data);
 	} else if (doc["query"].GetString() == string("id")) {
 		query_id(client_socket);
+	//} else if (doc.HasMember("create group")) {
+	//	const rapidjson::Value &object = doc["create group"];
+	//	create_group(client_socket, object);
+	} else {
+		pdebug << "other" << endl;
 	}
 }
 
@@ -419,10 +560,10 @@ void *client_thread(void *_client_socket){
 	char data[MAXSIZE];
 	int client_socket = *(int*)_client_socket;
 	unsigned int len = 0;
+	int ret = 0;
 	while(1){
+		ret = recv(client_socket, &len, sizeof(len), 0);
 		memset(data, 0, sizeof(data));
-		//int ret = recv(client_socket, data, sizeof(data), 0);
-		int ret = recv(client_socket, &len, sizeof(len), 0);
 		int id = socket_id[client_socket];
 		if (0 == ret) {
 			//断开链接
@@ -438,14 +579,11 @@ void *client_thread(void *_client_socket){
 			pdebug << errno << endl;
 			break;
 		}
-		//if(!recv(client_socket, message, sizeof(message), 0)){
-		//	break;
-		//}
 		ret = recv(client_socket, data, len, 0);
-		pdebug << "recv " << ret << endl;
+		//pdebug << "recv " << ret << endl;
 		string s(data);
 		pdebug << data << endl;
-		parse(s,client_socket);
+		parse(client_socket, s);
 	}
 }
 
@@ -467,16 +605,7 @@ void init(void){
 
 //要改
 void* server_thread(void* _client_socket){
-	string name;
-	string message;
-	while(1){
-		cin >> name;
-		getline(cin, message);
-		//while(getchar() != '\n');
-		message.erase(0,1);
-		//send(name_socket[name], message.c_str(), message.length(), 0);
-		my_send(name_socket[name], message);
-	}
+	/******/
 }
 
 int main(){
