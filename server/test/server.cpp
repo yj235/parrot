@@ -34,6 +34,8 @@
 
 using namespace std;
 
+unordered_map<int, sockaddr_in> socket_sockaddr_in;
+
 //<用户名 端口> 用id? //有bug 登录
 //unordered_map<string, int>name_socket;
 //<端口 用户名> 用id? //有bug 登录
@@ -559,6 +561,9 @@ void parse(int client_socket, string &data){
 void *client_thread(void *_client_socket){
 	char data[MAXSIZE];
 	int client_socket = *(int*)_client_socket;
+	//struct in_addr in = socket_socketaddr_in[client_sock].sin_addr.s_addr;
+	pdebug << socket_sockaddr_in[client_socket].sin_addr.s_addr;
+	pdebug << inet_ntoa(socket_sockaddr_in[client_socket].sin_addr) << endl;
 	unsigned int len = 0;
 	int ret = 0;
 	while(1){
@@ -625,7 +630,7 @@ int main(){
 
 	bind(server_sockfd, (struct sockaddr*)&server_sockaddr, sizeof(struct sockaddr));
 	//!!!
-	listen(server_sockfd, 4);
+	listen(server_sockfd, 2);
 
 	//线程分离
 	pthread_attr_t attr;
@@ -640,6 +645,8 @@ int main(){
 		socklen_t client_sockaddr_len = sizeof(client_socketaddr);
 
 		int client_socket = accept(server_sockfd, (struct sockaddr*)&client_socketaddr, &client_sockaddr_len);
+		//端口 地址信息
+		socket_sockaddr_in[client_socket] = client_socketaddr;
 
 		pthread_t tid;
 		pthread_create(&tid, &attr, client_thread, &client_socket);
